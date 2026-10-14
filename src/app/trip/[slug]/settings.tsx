@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
 import { Avatar } from '@/components/avatar';
+import { CostSettings } from '@/components/cost-settings';
 import { Button } from '@/components/button';
 import { useConfirm } from '@/components/confirm-dialog';
 import { Banner, Card, Chip, IconTile, Row, Screen, SectionTitle, Toast } from '@/components/layout';
@@ -145,6 +146,15 @@ export default function TripSettingsScreen() {
           await updateTrip(input);
           flash('Trip details saved');
         }}
+      />
+
+      <SectionTitle>Costs</SectionTitle>
+      <CostSettings
+        currency={trip.currency ?? 'USD'}
+        households={trip.households ?? []}
+        travelers={trip.travelers}
+        onSave={updateTrip}
+        onSaved={flash}
       />
 
       {deletedEvents.length > 0 ? (

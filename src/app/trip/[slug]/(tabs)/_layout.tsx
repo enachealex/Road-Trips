@@ -70,6 +70,8 @@ export default function TripTabsLayout() {
           tabBarBadgeStyle: { backgroundColor: c.danger, color: '#FFFFFF', fontSize: 11 },
         }}>
         <Tabs.Screen name="index" options={{ tabBarLabel: 'Plan', tabBarIcon: tabIcon('calendar') }} />
+        <Tabs.Screen name="lists" options={{ tabBarLabel: 'Lists', tabBarIcon: tabIcon('checklist') }} />
+        <Tabs.Screen name="costs" options={{ tabBarLabel: 'Costs', tabBarIcon: tabIcon('money') }} />
         <Tabs.Screen
           name="messages"
           options={{

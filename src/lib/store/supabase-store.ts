@@ -1,6 +1,20 @@
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js';
 
-import type { EventInput, Message, Trip, TripBundle, TripEvent, TripInput } from '../types';
+import type {
+  EventInput,
+  Expense,
+  ExpenseInput,
+  ListInput,
+  ListItem,
+  ListItemInput,
+  Message,
+  Trip,
+  TripBundle,
+  TripEvent,
+  TripInput,
+  TripList,
+  TripPatch,
+} from '../types';
 import { StoreError, type NewMessage, type TripStore } from './types';
 
 // Every call goes through the RPC functions in supabase/schema.sql. The tables themselves
@@ -40,9 +54,10 @@ export function createSupabaseStore(url: string, key: string): TripStore {
 
   return {
     mode: 'supabase',
-    createTrip: (input: TripInput, by: string) => rpc<Trip>('create_trip', { p_trip: { ...input, by } }),
+    createTrip: (input: TripInput & { currency?: string }, by: string) =>
+      rpc<Trip>('create_trip', { p_trip: { ...input, by } }),
     getTrip: (slug: string) => rpc<TripBundle | null>('get_trip', { p_slug: slug }),
-    updateTrip: (slug: string, patch: Partial<TripInput>, by: string) =>
+    updateTrip: (slug: string, patch: TripPatch, by: string) =>
       rpc<Trip>('update_trip', { p_slug: slug, p_trip: { ...patch, by } }),
     deleteTrip: (slug: string) => rpc<void>('delete_trip', { p_slug: slug }),
     saveEvent: (slug: string, event: EventInput) => rpc<TripEvent>('upsert_event', { p_slug: slug, p_event: event }),
@@ -55,6 +70,21 @@ export function createSupabaseStore(url: string, key: string): TripStore {
     postMessage: (slug: string, message: NewMessage) => rpc<Message>('post_message', { p_slug: slug, p_message: message }),
     deleteMessage: (slug: string, messageId: string, by: string) =>
       rpc<Message>('delete_message', { p_slug: slug, p_message_id: messageId, p_by: by }),
+    saveList: (slug: string, list: ListInput, by: string) =>
+      rpc<TripList>('save_list', { p_slug: slug, p_list: { ...list, by } }),
+    deleteList: async (slug: string, listId: string, by: string) => {
+      await rpc('save_list', { p_slug: slug, p_list: { id: listId, deleted: true, by } });
+    },
+    saveListItem: (slug: string, item: ListItemInput, by: string) =>
+      rpc<ListItem>('save_list_item', { p_slug: slug, p_item: { ...item, by } }),
+    deleteListItem: async (slug: string, itemId: string, by: string) => {
+      await rpc('save_list_item', { p_slug: slug, p_item: { id: itemId, deleted: true, by } });
+    },
+    saveExpense: (slug: string, expense: ExpenseInput, by: string) =>
+      rpc<Expense>('save_expense', { p_slug: slug, p_expense: { ...expense, by } }),
+    deleteExpense: async (slug: string, expenseId: string, by: string) => {
+      await rpc('save_expense', { p_slug: slug, p_expense: { id: expenseId, deleted: true, by } });
+    },
 
     subscribe(slug, { onChange, onMessage }) {
       const channel = client

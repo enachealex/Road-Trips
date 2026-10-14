@@ -1,7 +1,9 @@
+import { CATEGORIES } from './categories';
 import { formatDayShort, formatTime, isValidDate, isValidTime } from './dates';
 import { KINDS } from './kinds';
+import { formatMoney } from './money';
 import { sameName } from './people';
-import type { ActivityChange, ActivityEntry, EventKind, Trip, TripEvent } from './types';
+import type { ActivityChange, ActivityEntry, EventKind, Expense, ExpenseCategory, Share, Trip, TripEvent } from './types';
 
 // The activity log: who added, changed, deleted or restored what. The database records the
 // changed fields (roadbook.event_changes in supabase/schema.sql); eventChanges/tripChanges
@@ -30,6 +32,22 @@ export function eventChanges(o: TripEvent, n: TripEvent): ActivityChange[] {
 export function tripChanges(o: Trip, n: Trip): ActivityChange[] {
   const out: ActivityChange[] = [];
   for (const f of ['name', 'startDate', 'endDate', 'travelers'] as const) {
+    if (!same(o[f], n[f])) out.push({ field: f, from: o[f], to: n[f] });
+  }
+  const oc = o.currency ?? 'USD';
+  const nc = n.currency ?? 'USD';
+  if (oc !== nc) out.push({ field: 'currency', from: oc, to: nc });
+  if (!same(o.households ?? [], n.households ?? [])) {
+    out.push({ field: 'households', from: o.households ?? [], to: n.households ?? [] });
+  }
+  if (o.notes !== n.notes) out.push({ field: 'notes', from: null, to: null });
+  return out;
+}
+
+/** Same shape as roadbook.expense_changes in the schema. */
+export function expenseChanges(o: Expense, n: Expense): ActivityChange[] {
+  const out: ActivityChange[] = [];
+  for (const f of ['description', 'amountCents', 'category', 'paidBy', 'split', 'date'] as const) {
     if (!same(o[f], n[f])) out.push({ field: f, from: o[f], to: n[f] });
   }
   if (o.notes !== n.notes) out.push({ field: 'notes', from: null, to: null });
@@ -100,8 +118,51 @@ function describeEventChange(c: ActivityChange, kind: EventKind | null): string 
   }
 }
 
+const amountOf = (entry: ActivityEntry) => {
+  const c = entry.changes.find((x) => x.field === 'amountCents');
+  return (c?.to ?? c?.from ?? null) as number | null;
+};
+
+const names = (v: unknown) => (Array.isArray(v) ? (v as Share[]).map((s) => s.name) : []);
+
+function joinNames(list: string[]): string {
+  if (list.length <= 1) return list.join('');
+  return `${list.slice(0, -1).join(', ')} & ${list[list.length - 1]}`;
+}
+
+function describeExpenseChange(c: ActivityChange, currency: string): string {
+  switch (c.field) {
+    case 'description':
+      return `Renamed from “${show(c.from)}”`;
+    case 'amountCents':
+      return `Amount: ${formatMoney(c.from as number, currency)} → ${formatMoney(c.to as number, currency)}`;
+    case 'category':
+      return `Category: ${CATEGORIES[c.from as ExpenseCategory]?.label ?? c.from} → ${
+        CATEGORIES[c.to as ExpenseCategory]?.label ?? c.to
+      }`;
+    case 'paidBy':
+      return `Paid by: ${show(c.from)} → ${show(c.to)}`;
+    case 'split': {
+      const a = names(c.from);
+      const b = names(c.to);
+      const sameP = a.length === b.length && a.every((n) => b.some((m) => sameName(m, n)));
+      return sameP ? 'Changed how it’s split' : `Split between ${joinNames(b)} (was ${joinNames(a)})`;
+    }
+    case 'date':
+      return line('Date', c.from, c.to);
+    case 'notes':
+      return 'Updated the notes';
+    default:
+      return line(c.field, c.from, c.to);
+  }
+}
+
 function describeTripChange(c: ActivityChange): string {
   switch (c.field) {
+    case 'currency':
+      return `Currency: ${show(c.from)} → ${show(c.to)}`;
+    case 'households':
+      return 'Updated the households';
     case 'name':
       return `Renamed from “${show(c.from)}” to “${show(c.to)}”`;
     case 'startDate':
@@ -124,10 +185,29 @@ function describeTripChange(c: ActivityChange): string {
   }
 }
 
-/** "Dad changed Dinner" plus one line per changed field. */
-export function describeActivity(entry: ActivityEntry): { text: string; details: string[] } {
+/** "Dad changed Dinner" plus one line per changed field. Amounts use the trip's currency. */
+export function describeActivity(entry: ActivityEntry, currency = 'USD'): { text: string; details: string[] } {
   const who = entry.actor || 'Someone';
+  const amount = amountOf(entry);
+  const money = amount !== null ? ` · ${formatMoney(amount, currency)}` : '';
   switch (entry.action) {
+    case 'expense_added':
+      return { text: `${who} added the cost ${entry.title}${money}`, details: [] };
+    case 'expense_updated':
+      return {
+        text: `${who} changed the cost ${entry.title}`,
+        details: entry.changes.map((c) => describeExpenseChange(c, currency)),
+      };
+    case 'expense_deleted':
+      return { text: `${who} deleted the cost ${entry.title}${money}`, details: [] };
+    case 'payment_recorded': {
+      const [from, to] = entry.title.split(' → ');
+      return { text: `${who} recorded that ${from} paid ${to ?? 'someone'}${money}`, details: [] };
+    }
+    case 'list_added':
+      return { text: `${who} added the list ${entry.title}`, details: [] };
+    case 'list_deleted':
+      return { text: `${who} deleted the list ${entry.title}`, details: [] };
     case 'trip_created':
       return { text: `${who} created the trip`, details: [] };
     case 'trip_updated':

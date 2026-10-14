@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
 import { ActivityList } from '@/components/activity-list';
+import { ExpenseRow } from '@/components/costs';
 import { Button, IconButton } from '@/components/button';
 import { useConfirm } from '@/components/confirm-dialog';
 import { Icon } from '@/components/icon';
@@ -15,6 +16,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { daysBetween, formatDayLong, formatRelative, formatTime } from '@/lib/dates';
 import { KINDS, mapQuery } from '@/lib/kinds';
 import { directionsUrl, flightStatusUrl, mapsSearchUrl, normalizeUrl, telUrl } from '@/lib/links';
+import { formatMoney } from '@/lib/money';
 import { copyText } from '@/lib/share';
 import { errorMessage } from '@/lib/store';
 import { useLoadedTrip } from '@/lib/trip-context';
@@ -86,6 +88,7 @@ export default function EventDetailScreen() {
 
   const k = KINDS[event.kind];
   const history = (bundle.activity ?? []).filter((a) => a.eventId === event.id);
+  const linkedCosts = (bundle.expenses ?? []).filter((x) => x.eventId === event.id && x.kind === 'expense');
   const spansDays = !!event.endDate && event.endDate !== event.startDate;
   const nights = event.kind === 'lodging' && event.endDate ? daysBetween(event.startDate, event.endDate) : 0;
   const details = k.details.filter((f) => event.details[f.key]);
@@ -267,6 +270,35 @@ export default function EventDetailScreen() {
 
         {failure ? <Banner icon="warning" tone="danger">{failure}</Banner> : null}
 
+        <Card style={styles.costs}>
+          <View style={styles.costsHead}>
+            <ThemedText type="label" themeColor="textSecondary">
+              Costs
+            </ThemedText>
+            {linkedCosts.length > 0 ? (
+              <ThemedText type="smallBold">
+                {formatMoney(linkedCosts.reduce((s, x) => s + x.amountCents, 0), bundle.trip.currency ?? 'USD')}
+              </ThemedText>
+            ) : null}
+          </View>
+          {linkedCosts.map((x) => (
+            <ExpenseRow
+              key={x.id}
+              slug={slug}
+              expense={x}
+              currency={bundle.trip.currency ?? 'USD'}
+              travelers={bundle.trip.travelers}
+            />
+          ))}
+          <Button
+            label={linkedCosts.length ? 'Add another cost' : 'Add a cost for this'}
+            icon="money"
+            compact
+            variant="ghost"
+            onPress={() => router.push({ pathname: '/trip/[slug]/expense/new', params: { slug, eventId: event.id } })}
+          />
+        </Card>
+
         <Button
           label="Message the group about this"
           icon="chat"
@@ -348,6 +380,15 @@ const styles = StyleSheet.create({
   history: {
     padding: Spacing.one,
     gap: 0,
+  },
+  costs: {
+    padding: Spacing.one,
+    gap: 0,
+  },
+  costsHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: Spacing.three - 4,
   },
   historyHead: {
     flexDirection: 'row',

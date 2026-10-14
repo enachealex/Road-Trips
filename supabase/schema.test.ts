@@ -155,6 +155,153 @@ describe('schema', () => {
     await expect(asAnon('select get_messages($1)', ['nope'])).rejects.toThrow(/Trip not found/);
   });
 
+  it('starts trips with packing and to-do lists, and keeps items', async () => {
+    const trip = await asAnon<any>('select create_trip($1::jsonb)', [
+      json({ name: 'Lists', startDate: '2027-08-01', endDate: '2027-08-05', travelers: ['Ana', 'Ben'], by: 'Ana' }),
+    ]);
+    const s = trip.slug;
+    let bundle = await asAnon<any>('select get_trip($1)', [s]);
+    expect(bundle.trip.currency).toBe('USD');
+    expect(bundle.lists.map((l: any) => [l.name, l.kind])).toEqual([
+      ['Packing', 'packing'],
+      ['To-do', 'todo'],
+    ]);
+    const [packing, todo] = bundle.lists;
+
+    const item = await asAnon<any>('select save_list_item($1, $2::jsonb)', [
+      s,
+      json({ listId: packing.id, text: ' Sunscreen ', assignee: 'Ben', by: 'Ana' }),
+    ]);
+    expect(item).toMatchObject({ text: 'Sunscreen', assignee: 'Ben', done: false, createdBy: 'Ana', position: 1 });
+    const checked = await asAnon<any>('select save_list_item($1, $2::jsonb)', [s, json({ id: item.id, done: true, by: 'Ben' })]);
+    expect(checked).toMatchObject({ done: true, doneBy: 'Ben', text: 'Sunscreen', assignee: 'Ben' });
+    expect(checked.doneAt).toBeTruthy();
+    const unchecked = await asAnon<any>('select save_list_item($1, $2::jsonb)', [
+      s,
+      json({ id: item.id, done: false, assignee: null, by: 'Ana' }),
+    ]);
+    expect(unchecked).toMatchObject({ done: false, doneBy: '', doneAt: null, assignee: null });
+
+    const due = await asAnon<any>('select save_list_item($1, $2::jsonb)', [
+      s,
+      json({ listId: todo.id, text: 'Renew passports', dueDate: '2027-07-01', by: 'Ana' }),
+    ]);
+    expect(due.dueDate).toBe('2027-07-01');
+
+    const copied = await asAnon<any>('select save_list($1, $2::jsonb)', [
+      s,
+      json({ name: 'Camping gear', items: [{ text: 'Tent' }, { text: 'Stove', assignee: 'Ben' }, { text: '  ' }], by: 'Ana' }),
+    ]);
+    expect(copied).toMatchObject({ kind: 'other', position: 3 });
+    expect(copied.items.map((i: any) => [i.text, i.assignee])).toEqual([
+      ['Tent', null],
+      ['Stove', 'Ben'],
+    ]);
+
+    // Another trip can't add to or change these lists.
+    const other = await asAnon<any>('select create_trip($1::jsonb)', [json({ name: 'X', startDate: '2027-01-01', endDate: '2027-01-02' })]);
+    await expect(
+      asAnon('select save_list_item($1, $2::jsonb)', [other.slug, json({ listId: packing.id, text: 'Nope' })]),
+    ).rejects.toThrow(/List not found/);
+    await expect(
+      asAnon('select save_list_item($1, $2::jsonb)', [other.slug, json({ id: item.id, done: true })]),
+    ).rejects.toThrow(/Item not found/);
+
+    expect(await asAnon('select save_list_item($1, $2::jsonb)', [s, json({ id: item.id, deleted: true })])).toBeNull();
+    expect(await asAnon('select save_list($1, $2::jsonb)', [s, json({ id: copied.id, deleted: true, by: 'Ben' })])).toBeNull();
+    bundle = await asAnon<any>('select get_trip($1)', [s]);
+    expect(bundle.lists.map((l: any) => `${l.name}:${l.items.length}`)).toEqual(['Packing:0', 'To-do:1']);
+    expect(bundle.activity.slice(0, 2).map((a: any) => `${a.actor} ${a.action} ${a.title}`)).toEqual([
+      'Ben list_deleted Camping gear',
+      'Ana list_added Camping gear',
+    ]);
+  });
+
+  it('records expenses and payments, and checks that shares add up', async () => {
+    const trip = await asAnon<any>('select create_trip($1::jsonb)', [
+      json({ name: 'Costs', startDate: '2027-08-01', endDate: '2027-08-05', travelers: ['Ana', 'Ben'], currency: 'cad', by: 'Ana' }),
+    ]);
+    const s = trip.slug;
+    expect(trip.currency).toBe('CAD');
+    const gas = {
+      description: 'Gas', amountCents: 6420, category: 'fuel', paidBy: 'Ana',
+      split: [{ name: 'Ana', cents: 3210 }, { name: 'Ben', cents: 3210 }],
+      splitMode: 'equal', splitInput: { Ana: 1, Ben: 1 }, date: '2027-08-02', by: 'Ana',
+    };
+    const saved = await asAnon<any>('select save_expense($1, $2::jsonb)', [s, json(gas)]);
+    expect(saved).toMatchObject({ kind: 'expense', amountCents: 6420, paidBy: 'Ana', createdBy: 'Ana', date: '2027-08-02' });
+
+    await expect(
+      asAnon('select save_expense($1, $2::jsonb)', [s, json({ ...gas, amountCents: 6400 })]),
+    ).rejects.toThrow(/add up/);
+    await expect(asAnon('select save_expense($1, $2::jsonb)', [s, json({ ...gas, split: [] })])).rejects.toThrow(
+      /at least one person/,
+    );
+    await expect(
+      asAnon('select save_expense($1, $2::jsonb)', [s, json({ ...gas, split: [{ name: 'Ana', cents: 64.2 }], amountCents: 64 })]),
+    ).rejects.toThrow(/whole number/);
+
+    await asAnon('select save_expense($1, $2::jsonb)', [
+      s,
+      json({ ...gas, id: saved.id, amountCents: 7000, split: [{ name: 'Ana', cents: 3500 }, { name: 'Ben', cents: 3500 }], by: 'Ben' }),
+    ]);
+    await expect(
+      asAnon('select save_expense($1, $2::jsonb)', [
+        s,
+        json({ kind: 'payment', description: 'Paid back', amountCents: 3500, paidBy: 'Ben', split: [{ name: 'ben', cents: 3500 }] }),
+      ]),
+    ).rejects.toThrow(/one person to one other/);
+    await asAnon('select save_expense($1, $2::jsonb)', [
+      s,
+      json({ kind: 'payment', description: 'Paid back', amountCents: 3500, paidBy: 'Ben', split: [{ name: 'Ana', cents: 3500 }], by: 'Ben' }),
+    ]);
+    const snack = await asAnon<any>('select save_expense($1, $2::jsonb)', [
+      s,
+      json({ ...gas, description: 'Snacks', amountCents: 900, split: [{ name: 'Ben', cents: 900 }], by: 'Ana' }),
+    ]);
+    expect(await asAnon('select save_expense($1, $2::jsonb)', [s, json({ id: snack.id, deleted: true, by: 'Ana' })])).toBeNull();
+
+    const bundle = await asAnon<any>('select get_trip($1)', [s]);
+    expect(bundle.expenses.map((x: any) => `${x.kind}:${x.description}:${x.amountCents}`).sort()).toEqual([
+      'expense:Gas:7000',
+      'payment:Paid back:3500',
+    ]);
+    const log = bundle.activity.filter((a: any) => a.action.includes('expense') || a.action === 'payment_recorded');
+    expect(log.map((a: any) => `${a.actor} ${a.action} ${a.title}`)).toEqual([
+      'Ana expense_deleted Snacks',
+      'Ana expense_added Snacks',
+      'Ben payment_recorded Ben → Ana',
+      'Ben expense_updated Gas',
+      'Ana expense_added Gas',
+    ]);
+    expect(log[3].changes).toEqual([
+      { field: 'amountCents', from: 6420, to: 7000 },
+      { field: 'split', from: gas.split, to: [{ name: 'Ana', cents: 3500 }, { name: 'Ben', cents: 3500 }] },
+    ]);
+    expect(log[4].expenseId).toBe(saved.id);
+  });
+
+  it('saves currency, households and payment handles on the trip', async () => {
+    const trip = await asAnon<any>('select create_trip($1::jsonb)', [
+      json({ name: 'Money', startDate: '2027-08-01', endDate: '2027-08-05', travelers: ['Mom', 'Dad', 'Kid', 'Gran'] }),
+    ]);
+    const updated = await asAnon<any>('select update_trip($1, $2::jsonb)', [
+      trip.slug,
+      json({
+        currency: 'eur',
+        households: [{ name: ' The Smiths ', members: ['Mom', 'Dad', 'Kid', 'mom'] }, { name: '', members: ['x'] }],
+        people: { Mom: { venmo: '@mom-s' } },
+        by: 'Mom',
+      }),
+    ]);
+    expect(updated.currency).toBe('EUR');
+    expect(updated.households).toEqual([{ name: 'The Smiths', members: ['Mom', 'Dad', 'Kid'] }]);
+    expect(updated.people).toEqual({ Mom: { venmo: '@mom-s' } });
+    await expect(asAnon('select update_trip($1, $2::jsonb)', [trip.slug, json({ currency: 'euro' })])).rejects.toThrow(
+      /trips_currency_code/,
+    );
+  });
+
   it('rejects bad data', async () => {
     await expect(asAnon('select update_trip($1, $2::jsonb)', [slug, json({ endDate: '2027-06-01' })])).rejects.toThrow(
       /trips_date_order/,

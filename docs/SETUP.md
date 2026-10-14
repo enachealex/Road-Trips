@@ -14,7 +14,7 @@ Browser ── https://roadtrip.thejumpvault.com ──────► GitHub Pa
 ## 1. Database (done 2026-10-14)
 
 Roadbook's tables live in their own `roadbook` schema in the Supabase `postgres` database, which
-the public API roles cannot see. The ten functions at the bottom of
+the public API roles cannot see. The thirteen functions at the bottom of
 [supabase/schema.sql](../supabase/schema.sql) are the only way in.
 
 To apply schema changes (the file is safe to run again), from this folder in Git Bash:
@@ -39,7 +39,7 @@ Supabase on the server has no general public access. Roadbook has its own Cloudf
 ```yaml
 ingress:
   - hostname: roadtrip-api.thejumpvault.com
-    path: ^/rest/v1/rpc/(create_trip|get_trip|update_trip|delete_trip|upsert_event|delete_event|restore_event|post_message|get_messages|delete_message)$
+    path: ^/rest/v1/rpc/(create_trip|get_trip|update_trip|delete_trip|upsert_event|delete_event|restore_event|post_message|get_messages|delete_message|save_list|save_list_item|save_expense)$
     service: http://127.0.0.1:8000
   - hostname: roadtrip-api.thejumpvault.com
     path: ^/realtime/v1/

@@ -5,6 +5,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { describeActivity } from '@/lib/activity';
 import { formatRelative } from '@/lib/dates';
+import { useTrip } from '@/lib/trip-context';
 import type { ActivityEntry } from '@/lib/types';
 
 import { Avatar } from './avatar';
@@ -14,6 +15,8 @@ import { ThemedText } from './themed-text';
 function openEntry(slug: string, entry: ActivityEntry) {
   if (entry.eventId) {
     router.push({ pathname: '/trip/[slug]/event/[eventId]', params: { slug, eventId: entry.eventId } });
+  } else if (entry.expenseId) {
+    router.push({ pathname: '/trip/[slug]/expense/[expenseId]', params: { slug, expenseId: entry.expenseId } });
   }
 }
 
@@ -30,8 +33,11 @@ export function ActivityItem({
   linkEvents?: boolean;
 }) {
   const c = useTheme();
-  const { text, details } = describeActivity(entry);
-  const linked = linkEvents && !!entry.eventId;
+  const { bundle } = useTrip();
+  const { text, details } = describeActivity(entry, bundle?.trip.currency ?? 'USD');
+  // Costs open their edit screen, unless the cost has since been deleted.
+  const expenseExists = !!entry.expenseId && (bundle?.expenses ?? []).some((x) => x.id === entry.expenseId);
+  const linked = linkEvents && (!!entry.eventId || expenseExists);
   return (
     <Pressable
       onPress={linked ? () => openEntry(slug, entry) : undefined}

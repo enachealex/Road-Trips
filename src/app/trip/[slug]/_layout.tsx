@@ -73,6 +73,8 @@ export default function TripLayout() {
           <Stack.Screen name="event/new" options={{ title: 'Add to the plan' }} />
           <Stack.Screen name="event/[eventId]/index" options={{ title: 'Details' }} />
           <Stack.Screen name="event/[eventId]/edit" options={{ title: 'Edit' }} />
+          <Stack.Screen name="expense/new" options={{ title: 'Add a cost' }} />
+          <Stack.Screen name="expense/[expenseId]" options={{ title: 'Cost' }} />
         </Stack>
       </TripGate>
     </TripProvider>

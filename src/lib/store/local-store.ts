@@ -1,4 +1,4 @@
-import { eventChanges, tripChanges } from '../activity';
+import { eventChanges, expenseChanges, tripChanges } from '../activity';
 import { sameName } from '../people';
 import { readJSON, writeJSON } from '../storage';
 import type {
@@ -6,22 +6,34 @@ import type {
   ActivityChange,
   ActivityEntry,
   EventInput,
+  Expense,
+  ExpenseInput,
+  Household,
+  ListInput,
+  ListItem,
+  ListItemInput,
   Message,
   Trip,
   TripBundle,
   TripEvent,
   TripInput,
+  TripList,
+  TripPatch,
 } from '../types';
 import { StoreError, type NewMessage, type TripStore } from './types';
 
 // Demo mode: the same behaviour as the Supabase functions, kept in this browser's storage.
 // Other tabs on the same device see changes through the "storage" event.
 
+type Deletable<T> = T & { deletedAt?: string | null };
+
 interface LocalTrip {
   trip: Trip;
   events: TripEvent[];
   activity?: ActivityEntry[];
   messages?: Message[];
+  lists?: Deletable<TripList>[];
+  expenses?: Deletable<Expense>[];
   deleted?: boolean;
 }
 
@@ -77,6 +89,7 @@ function log(
   title: string,
   event: TripEvent | null,
   changes: ActivityChange[] = [],
+  expenseId: string | null = null,
 ) {
   const item: ActivityEntry = {
     id: uuid(),
@@ -84,6 +97,7 @@ function log(
     actor,
     action,
     eventId: event?.id ?? null,
+    expenseId,
     title,
     kind: event?.kind ?? null,
     changes,
@@ -91,10 +105,29 @@ function log(
   entry.activity = [item, ...(entry.activity ?? [])];
 }
 
+function newList(name: string, kind: TripList['kind'], position: number, by: string): Deletable<TripList> {
+  return { id: uuid(), name, kind, position, createdBy: by, createdAt: new Date().toISOString(), items: [], deletedAt: null };
+}
+
+function findList(entry: LocalTrip, listId: string): Deletable<TripList> {
+  const list = (entry.lists ?? []).find((l) => l.id === listId && !l.deletedAt);
+  if (!list) throw new StoreError(NOT_FOUND);
+  return list;
+}
+
+function cleanHouseholds(households: Household[]): Household[] {
+  return households
+    .filter((h) => h.name?.trim())
+    .map((h) => ({ name: h.name.trim().slice(0, 60), members: cleanNames(h.members) }));
+}
+
+const visibleItems = (items: Deletable<ListItem>[]) =>
+  items.filter((i) => !i.deletedAt).sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt));
+
 export const localStore: TripStore = {
   mode: 'local',
 
-  async createTrip(input: TripInput, by: string) {
+  async createTrip(input: TripInput & { currency?: string }, by: string) {
     checkDates(input.startDate, input.endDate);
     const now = new Date().toISOString();
     const actor = cleanActor(by);
@@ -105,13 +138,22 @@ export const localStore: TripStore = {
       endDate: input.endDate,
       travelers: cleanNames(input.travelers),
       notes: input.notes ?? '',
+      currency: (input.currency || 'USD').toUpperCase(),
+      households: [],
+      people: {},
       createdBy: actor,
       updatedBy: actor,
       createdAt: now,
       updatedAt: now,
     };
     const db = load();
-    const entry: LocalTrip = { trip, events: [] };
+    const entry: LocalTrip = {
+      trip,
+      events: [],
+      // Every trip starts with a packing list and a to-do list.
+      lists: [newList('Packing', 'packing', 1, actor), newList('To-do', 'todo', 2, actor)],
+      expenses: [],
+    };
     log(entry, actor, 'trip_created', trip.name, null);
     db[trip.slug] = entry;
     save(db);
@@ -133,10 +175,18 @@ export const localStore: TripStore = {
         .filter((e) => e.deletedAt && Date.parse(e.deletedAt) > cutoff)
         .sort((a, b) => b.deletedAt!.localeCompare(a.deletedAt!)),
       activity: (entry.activity ?? []).slice(0, 80),
+      lists: (entry.lists ?? [])
+        .filter((l) => !l.deletedAt)
+        .sort((a, b) => a.position - b.position)
+        .map(({ deletedAt: _d, ...l }) => ({ ...l, items: visibleItems(l.items as Deletable<ListItem>[]) })),
+      expenses: (entry.expenses ?? [])
+        .filter((x) => !x.deletedAt)
+        .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+        .map(({ deletedAt: _d, ...x }) => x),
     };
   },
 
-  async updateTrip(slug: string, patch: Partial<TripInput>, by: string) {
+  async updateTrip(slug: string, patch: TripPatch, by: string) {
     const db = load();
     const entry = findTrip(db, slug);
     const actor = cleanActor(by);
@@ -147,10 +197,14 @@ export const localStore: TripStore = {
       endDate: patch.endDate ?? entry.trip.endDate,
       travelers: patch.travelers ? cleanNames(patch.travelers) : entry.trip.travelers,
       notes: patch.notes ?? entry.trip.notes,
+      currency: patch.currency ? patch.currency.toUpperCase() : (entry.trip.currency ?? 'USD'),
+      households: patch.households ? cleanHouseholds(patch.households) : (entry.trip.households ?? []),
+      people: patch.people ?? entry.trip.people ?? {},
       updatedBy: actor,
       updatedAt: new Date().toISOString(),
     };
     checkDates(next.startDate, next.endDate);
+    if (!/^[A-Z]{3}$/.test(next.currency ?? '')) throw new StoreError('Pick a currency like USD or EUR.');
     const changes = tripChanges(entry.trip, next);
     if (changes.length) log(entry, actor, 'trip_updated', next.name, null, changes);
     entry.trip = next;
@@ -249,6 +303,163 @@ export const localStore: TripStore = {
     all[slug] = all[slug].map((m) => (m.id === messageId ? deleted : m));
     saveMessages(all);
     return deleted;
+  },
+
+  async saveList(slug: string, input: ListInput, by: string) {
+    const db = load();
+    const entry = findTrip(db, slug);
+    const actor = cleanActor(by);
+    entry.lists = entry.lists ?? [];
+    let list: Deletable<TripList>;
+    if (input.id) {
+      list = findList(entry, input.id);
+      list.name = input.name.trim() || list.name;
+      list.kind = input.kind ?? list.kind;
+    } else {
+      const name = input.name.trim();
+      if (!name) throw new StoreError('Give the list a name.');
+      const position = Math.max(0, ...entry.lists.map((l) => l.position)) + 1;
+      list = newList(name.slice(0, 60), input.kind ?? 'other', position, actor);
+      const now = new Date().toISOString();
+      list.items = (input.items ?? [])
+        .filter((i) => i.text.trim())
+        .map((i, n) => ({
+          id: uuid(), listId: list.id, text: i.text.trim().slice(0, 300), assignee: i.assignee?.trim() || null,
+          dueDate: null, done: false, doneBy: '', doneAt: null, position: n + 1, createdBy: actor, createdAt: now, updatedAt: now,
+        }));
+      entry.lists.push(list);
+      log(entry, actor, 'list_added', list.name, null);
+    }
+    save(db);
+    return { ...list, items: visibleItems(list.items as Deletable<ListItem>[]) };
+  },
+
+  async deleteList(slug: string, listId: string, by: string) {
+    const db = load();
+    const entry = findTrip(db, slug);
+    const list = findList(entry, listId);
+    list.deletedAt = new Date().toISOString();
+    log(entry, cleanActor(by), 'list_deleted', list.name, null);
+    save(db);
+  },
+
+  async saveListItem(slug: string, input: ListItemInput, by: string) {
+    const db = load();
+    const entry = findTrip(db, slug);
+    const actor = cleanActor(by);
+    const now = new Date().toISOString();
+    let item: Deletable<ListItem> | undefined;
+    if (input.id) {
+      for (const l of entry.lists ?? []) {
+        if (l.deletedAt) continue;
+        item = (l.items as Deletable<ListItem>[]).find((i) => i.id === input.id && !i.deletedAt);
+        if (item) break;
+      }
+      if (!item) throw new StoreError(NOT_FOUND);
+      const done = input.done ?? item.done;
+      Object.assign(item, {
+        text: input.text?.trim() || item.text,
+        assignee: input.assignee !== undefined ? input.assignee?.trim() || null : item.assignee,
+        dueDate: input.dueDate !== undefined ? input.dueDate || null : item.dueDate,
+        position: input.position ?? item.position,
+        doneBy: done === item.done ? item.doneBy : done ? actor : '',
+        doneAt: done === item.done ? item.doneAt : done ? now : null,
+        done,
+        updatedAt: now,
+      });
+      // Moving to another list
+      if (input.listId && input.listId !== item.listId) {
+        const from = findList(entry, item.listId);
+        const to = findList(entry, input.listId);
+        from.items = from.items.filter((i) => i.id !== item!.id);
+        to.items.push({ ...item, listId: to.id });
+      }
+    } else {
+      const list = findList(entry, input.listId);
+      const text = input.text?.trim();
+      if (!text) throw new StoreError('Type something for the item.');
+      const done = input.done ?? false;
+      item = {
+        id: uuid(), listId: list.id, text: text.slice(0, 300), assignee: input.assignee?.trim() || null,
+        dueDate: input.dueDate || null, done, doneBy: done ? actor : '', doneAt: done ? now : null,
+        position: input.position ?? Math.max(0, ...list.items.map((i) => i.position)) + 1,
+        createdBy: actor, createdAt: now, updatedAt: now, deletedAt: null,
+      };
+      list.items.push(item);
+    }
+    save(db);
+    const { deletedAt: _d, ...plain } = item;
+    return plain;
+  },
+
+  async deleteListItem(slug: string, itemId: string) {
+    const db = load();
+    const entry = findTrip(db, slug);
+    for (const l of entry.lists ?? []) {
+      const item = (l.items as Deletable<ListItem>[]).find((i) => i.id === itemId);
+      if (item) item.deletedAt = new Date().toISOString();
+    }
+    save(db);
+  },
+
+  async saveExpense(slug: string, input: ExpenseInput, by: string) {
+    const db = load();
+    const entry = findTrip(db, slug);
+    const actor = cleanActor(by);
+    entry.expenses = entry.expenses ?? [];
+    if (!input.split.length) throw new StoreError('An expense needs at least one person to split it with');
+    if (input.split.some((s) => !s.name.trim() || s.cents < 0 || !Number.isInteger(s.cents))) {
+      throw new StoreError('Each share needs a name and a whole number of cents');
+    }
+    if (input.split.reduce((sum, s) => sum + s.cents, 0) !== input.amountCents) {
+      throw new StoreError('The shares must add up to the total');
+    }
+    if (input.kind === 'payment' && (input.split.length !== 1 || sameName(input.split[0].name, input.paidBy))) {
+      throw new StoreError('A payment goes from one person to one other person');
+    }
+    const now = new Date().toISOString();
+    const existing = input.id ? entry.expenses.find((x) => x.id === input.id && !x.deletedAt) : undefined;
+    if (input.id && !existing) throw new StoreError(NOT_FOUND);
+    const expense: Deletable<Expense> = {
+      ...input,
+      id: existing?.id ?? uuid(),
+      description: input.description.trim(),
+      paidBy: input.paidBy.trim(),
+      split: input.split.map((s) => ({ name: s.name.trim(), cents: s.cents })),
+      eventId: input.eventId && entry.events.some((e) => e.id === input.eventId) ? input.eventId : null,
+      createdBy: existing?.createdBy ?? actor,
+      updatedBy: actor,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+    if (existing) {
+      const changes = expenseChanges(existing, expense);
+      if (changes.length) log(entry, actor, 'expense_updated', expense.description, null, changes, expense.id);
+      entry.expenses = entry.expenses.map((x) => (x.id === expense.id ? expense : x));
+    } else {
+      const payment = expense.kind === 'payment';
+      log(
+        entry, actor, payment ? 'payment_recorded' : 'expense_added',
+        payment ? `${expense.paidBy} → ${expense.split[0].name}` : expense.description,
+        null, [{ field: 'amountCents', from: null, to: expense.amountCents }], expense.id,
+      );
+      entry.expenses.push(expense);
+    }
+    save(db);
+    const { deletedAt: _d, ...plain } = expense;
+    return plain;
+  },
+
+  async deleteExpense(slug: string, expenseId: string, by: string) {
+    const db = load();
+    const entry = findTrip(db, slug);
+    const expense = (entry.expenses ?? []).find((x) => x.id === expenseId && !x.deletedAt);
+    if (!expense) throw new StoreError(NOT_FOUND);
+    expense.deletedAt = new Date().toISOString();
+    log(entry, cleanActor(by), 'expense_deleted', expense.description, null,
+      [{ field: 'amountCents', from: expense.amountCents, to: null }], expense.id);
+    save(db);
   },
 
   subscribe(_slug, { onChange, onMessage }) {

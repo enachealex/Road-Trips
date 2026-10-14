@@ -12,9 +12,9 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDateRange, nowLocal } from '@/lib/dates';
 import { tripLength, tripStatus } from '@/lib/itinerary';
 import { slugFromInput } from '@/lib/links';
-import { getMyTrips, rememberTrip, type SavedTrip } from '@/lib/my-trips';
-import { buildSampleTrip } from '@/lib/sample-trip';
-import { errorMessage, isDemoMode, store } from '@/lib/store';
+import { createSampleTrip } from '@/lib/create-sample';
+import { getMyTrips, type SavedTrip } from '@/lib/my-trips';
+import { errorMessage, isDemoMode } from '@/lib/store';
 
 function statusText(trip: SavedTrip, today: string): string {
   const s = tripStatus(trip, today);
@@ -86,18 +86,7 @@ export default function HomeScreen() {
     setSampleBusy(true);
     setSampleError(null);
     try {
-      const sample = buildSampleTrip();
-      const trip = await store.createTrip(sample.trip, sample.organizer);
-      const saved = await Promise.all(sample.events.map((e) => store.saveEvent(trip.slug, e)));
-      const idByTitle = new Map(saved.map((e) => [e.title, e.id]));
-      for (const m of sample.messages) {
-        await store.postMessage(trip.slug, {
-          body: m.body,
-          by: m.by,
-          eventId: m.about ? (idByTitle.get(m.about) ?? null) : null,
-        });
-      }
-      rememberTrip(trip);
+      const trip = await createSampleTrip();
       router.push({ pathname: '/trip/[slug]', params: { slug: trip.slug } });
     } catch (e) {
       setSampleError(errorMessage(e));

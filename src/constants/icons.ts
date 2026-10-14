@@ -23,6 +23,17 @@ export const Icons = {
   meal: icon('fork.knife', 'restaurant'),
   note: icon('note.text', 'sticky_note_2'),
 
+  // Costs and lists
+  fuel: icon('fuelpump.fill', 'local_gas_station'),
+  cart: icon('cart.fill', 'shopping_cart'),
+  bag: icon('bag.fill', 'shopping_bag'),
+  receipt: icon('doc.text', 'receipt_long'),
+  money: icon('dollarsign.circle', 'payments'),
+  checklist: icon('checklist', 'checklist'),
+  boxEmpty: icon('square', 'check_box_outline_blank'),
+  boxChecked: icon('checkmark.square.fill', 'check_box'),
+  arrowRight: icon('arrow.right', 'arrow_forward'),
+
   // Interface
   add: icon('plus', 'add'),
   back: icon('chevron.left', 'arrow_back'),
@@ -44,6 +55,7 @@ export const Icons = {
   home: icon('house', 'home'),
   link: icon('link', 'link'),
   map: icon('map', 'map'),
+  minus: icon('minus', 'remove'),
   moon: icon('moon.fill', 'bedtime'),
   offline: icon('wifi.slash', 'wifi_off'),
   openExternal: icon('arrow.up.right.square', 'open_in_new'),

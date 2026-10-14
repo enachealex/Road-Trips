@@ -25,6 +25,11 @@ Live at **https://roadtrip.thejumpvault.com**.
   Activity tab lists every change, and a "since you last looked" card shows what others did.
 - **Messenger.** A group chat for the trip, live between devices, with an unread badge.
   "Message the group about this" links a message to a flight, hotel or plan.
+- **Lists.** Shared packing and to-do lists (and any others): assign items to people, add due
+  dates, see who checked what, and copy lists from earlier trips.
+- **Costs.** Record who paid for what and split it equally, by amounts or by shares. Roadbook
+  keeps balances per person or per household, suggests the fewest payments to even up (with
+  Venmo / PayPal / Zelle buttons), and totals spending by category.
 - **Works offline.** The last copy of each trip stays readable without signal, and the site
   itself opens offline once it has been visited.
 - **Maps and calendars.** Directions and map links for every place, flight status links,

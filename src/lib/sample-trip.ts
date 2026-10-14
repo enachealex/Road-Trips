@@ -1,5 +1,5 @@
 import { addDays, nowLocal } from './dates';
-import type { EventInput, TripInput } from './types';
+import type { EventInput, ExpenseCategory, Household, PayHandles, TripInput } from './types';
 
 /**
  * A 12-day coast road trip that started two days ago, so a fresh sample shows the
@@ -12,8 +12,34 @@ export interface SampleMessage {
   about?: string;
 }
 
+export interface SampleListItem {
+  text: string;
+  assignee?: string;
+  /** Who checked it off, if it's done. */
+  doneBy?: string;
+  dueDate?: string;
+}
+
+export interface SampleExpense {
+  description: string;
+  cents: number;
+  category: ExpenseCategory;
+  paidBy: string;
+  date: string;
+  /** Split equally between these people (everyone when left out). */
+  between?: string[];
+  /** Plan item this cost belongs to, by title. */
+  about?: string;
+  /** Set for a payment back: who received it. */
+  paidTo?: string;
+}
+
 export function buildSampleTrip(today: string = nowLocal().date): {
   organizer: string;
+  households: Household[];
+  people: Record<string, PayHandles>;
+  lists: { kind: 'packing' | 'todo'; items: SampleListItem[] }[];
+  expenses: SampleExpense[];
   trip: TripInput;
   events: EventInput[];
   messages: SampleMessage[];
@@ -41,6 +67,48 @@ export function buildSampleTrip(today: string = nowLocal().date): {
 
   return {
     organizer: 'Mom',
+    households: [
+      { name: 'The Smiths', members: family },
+      { name: 'Grandma', members: ['Grandma'] },
+    ],
+    people: {
+      Mom: { venmo: '@sample-mom' },
+      Grandma: { zelle: 'grandma@example.com' },
+    },
+    lists: [
+      {
+        kind: 'packing',
+        items: [
+          { text: 'Swimsuits', assignee: 'Maya' },
+          { text: 'Light jackets for the coast' },
+          { text: 'Phone chargers and car adapter', assignee: 'Dad' },
+          { text: 'Sunscreen' },
+          { text: 'Snacks for the long drives', assignee: 'Mom' },
+          { text: 'Blood pressure pills', assignee: 'Grandma' },
+          { text: 'Booster seat for Leo', assignee: 'Dad', doneBy: 'Dad' },
+          { text: 'Driver’s licenses', assignee: 'Mom', doneBy: 'Mom' },
+        ],
+      },
+      {
+        kind: 'todo',
+        items: [
+          { text: 'Buy Disneyland tickets', assignee: 'Dad', doneBy: 'Dad' },
+          { text: 'Reserve dinner at the wharf', assignee: 'Grandma', doneBy: 'Grandma' },
+          { text: 'Download offline maps for Big Sur', assignee: 'Mom', dueDate: d(3) },
+          { text: 'Get the beach house door code', assignee: 'Dad', dueDate: d(4) },
+          { text: 'Hold the mail', assignee: 'Mom', doneBy: 'Mom', dueDate: d(-3) },
+        ],
+      },
+    ],
+    expenses: [
+      { description: 'Hotel Zephyr', cents: 61200, category: 'lodging', paidBy: 'Mom', date: d(0), about: 'Hotel Zephyr' },
+      { description: 'Dinner at the wharf', cents: 18640, category: 'food', paidBy: 'Grandma', date: d(0), about: 'Dinner at the wharf' },
+      { description: 'Bike rentals', cents: 16000, category: 'activities', paidBy: 'Dad', date: d(1), between: family },
+      { description: 'Gas', cents: 6420, category: 'fuel', paidBy: 'Dad', date: d(2) },
+      { description: 'Aquarium tickets', cents: 24500, category: 'activities', paidBy: 'Dad', date: d(2), about: 'Monterey Bay Aquarium' },
+      { description: 'Groceries for the cabin', cents: 5875, category: 'groceries', paidBy: 'Mom', date: d(2) },
+      { description: 'Payment to Mom', cents: 5000, category: 'other', paidBy: 'Grandma', date: d(2), paidTo: 'Mom' },
+    ],
     trip: {
       name: 'Pacific Coast Road Trip',
       startDate: d(0),

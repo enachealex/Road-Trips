@@ -19,3 +19,8 @@ export function personColor(name: string): string {
   for (const ch of name.trim().toLowerCase()) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
   return COLORS[hash % COLORS.length];
 }
+
+/** Everyone who can pay or share a cost: the travelers, plus this device's person if they aren't listed. */
+export function costPeople(travelers: string[], me: string | null): string[] {
+  return me && !travelers.some((t) => sameName(t, me)) ? [...travelers, me] : travelers;
+}

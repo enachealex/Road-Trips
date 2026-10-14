@@ -21,7 +21,19 @@ import {
 } from './my-trips';
 import { sameName } from './people';
 import { errorMessage, store, StoreError } from './store';
-import type { EventInput, Message, TripBundle, TripEvent, TripInput } from './types';
+import type {
+  EventInput,
+  Expense,
+  ExpenseInput,
+  ListInput,
+  ListItem,
+  ListItemInput,
+  Message,
+  TripBundle,
+  TripEvent,
+  TripList,
+  TripPatch,
+} from './types';
 
 type Status = 'loading' | 'ready' | 'not-found' | 'error';
 
@@ -46,8 +58,16 @@ interface TripContextValue {
   saveEvent: (input: EventInput) => Promise<TripEvent>;
   deleteEvent: (id: string) => Promise<void>;
   restoreEvent: (id: string) => Promise<void>;
-  updateTrip: (patch: Partial<TripInput>) => Promise<void>;
+  updateTrip: (patch: TripPatch) => Promise<void>;
   deleteTrip: () => Promise<void>;
+
+  saveList: (input: ListInput) => Promise<TripList>;
+  deleteList: (id: string) => Promise<void>;
+  /** Check-offs and edits show straight away and are saved in the background. */
+  saveListItem: (input: ListItemInput) => Promise<ListItem>;
+  deleteListItem: (id: string) => Promise<void>;
+  saveExpense: (input: ExpenseInput) => Promise<Expense>;
+  deleteExpense: (id: string) => Promise<void>;
 
   /** When this device last caught up on the activity feed. */
   lastSeen: string | null;
@@ -77,6 +97,19 @@ export function useLoadedTrip() {
 }
 
 const NEED_NAME = 'Choose who you are first, so everyone can see who made the change.';
+
+/** Puts an item into its list (moving it out of any other), in position order. */
+function placeItem(b: TripBundle, item: ListItem): TripBundle {
+  return {
+    ...b,
+    lists: (b.lists ?? []).map((l) => {
+      const others = l.items.filter((i) => i.id !== item.id);
+      return l.id === item.listId
+        ? { ...l, items: [...others, item].sort((x, y) => x.position - y.position) }
+        : { ...l, items: others };
+    }),
+  };
+}
 
 export function TripProvider({ slug, children }: { slug: string; children: ReactNode }) {
   // Show the saved copy straight away, then replace it with fresh data.
@@ -243,7 +276,11 @@ export function TripProvider({ slug, children }: { slug: string; children: React
 
   /** Runs a change, updates the local copy, tells other viewers, then fetches the new activity. */
   const mutate = useCallback(
-    async <T,>(action: () => Promise<T>, update: (current: TripBundle, result: T) => TripBundle) => {
+    async <T,>(
+      action: () => Promise<T>,
+      update: (current: TripBundle, result: T) => TripBundle,
+      { refetch = true }: { refetch?: boolean } = {},
+    ) => {
       const result = await action();
       setBundle((current) => {
         if (!current) return current;
@@ -254,11 +291,21 @@ export function TripProvider({ slug, children }: { slug: string; children: React
       });
       setOfflineSince(null);
       store.notify(slug, 'plan');
-      void refresh();
+      if (refetch) void refresh();
       return result;
     },
     [slug, refresh],
   );
+
+  /** Applies a change to the local copy right away (before the server confirms it). */
+  const patchBundle = useCallback((update: (current: TripBundle) => TripBundle) => {
+    setBundle((current) => {
+      if (!current) return current;
+      const next = update(current);
+      writeCachedTrip(next);
+      return next;
+    });
+  }, []);
 
   const saveEvent = useCallback(
     async (input: EventInput) => {
@@ -311,7 +358,7 @@ export function TripProvider({ slug, children }: { slug: string; children: React
   );
 
   const updateTripAs = useCallback(
-    (patch: Partial<TripInput>, by: string) =>
+    (patch: TripPatch, by: string) =>
       mutate(
         () => store.updateTrip(slug, patch, by),
         (b, trip) => ({ ...b, trip }),
@@ -320,7 +367,7 @@ export function TripProvider({ slug, children }: { slug: string; children: React
   );
 
   const updateTrip = useCallback(
-    async (patch: Partial<TripInput>) => {
+    async (patch: TripPatch) => {
       const by = await ensureIdentity();
       await updateTripAs(patch, by);
     },
@@ -331,6 +378,105 @@ export function TripProvider({ slug, children }: { slug: string; children: React
     await store.deleteTrip(slug);
     store.notify(slug, 'plan');
   }, [slug]);
+
+  const saveList = useCallback(
+    async (input: ListInput) => {
+      const by = await ensureIdentity();
+      return mutate(
+        () => store.saveList(slug, input, by),
+        (b, saved) => {
+          const lists = b.lists ?? [];
+          return {
+            ...b,
+            lists: lists.some((l) => l.id === saved.id)
+              ? lists.map((l) => (l.id === saved.id ? saved : l))
+              : [...lists, saved],
+          };
+        },
+      );
+    },
+    [slug, mutate, ensureIdentity],
+  );
+
+  const deleteList = useCallback(
+    async (id: string) => {
+      const by = await ensureIdentity();
+      await mutate(
+        () => store.deleteList(slug, id, by),
+        (b) => ({ ...b, lists: (b.lists ?? []).filter((l) => l.id !== id) }),
+      );
+    },
+    [slug, mutate, ensureIdentity],
+  );
+
+  const saveListItem = useCallback(
+    async (input: ListItemInput) => {
+      const by = await ensureIdentity();
+      const previous = bundle;
+      if (input.id) {
+        // Show the change straight away; the server's copy replaces it when it arrives.
+        const current = (bundle?.lists ?? []).flatMap((l) => l.items).find((i) => i.id === input.id);
+        if (current) {
+          const done = input.done ?? current.done;
+          const changed = done !== current.done;
+          patchBundle((b) =>
+            placeItem(b, {
+              ...current,
+              ...Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)),
+              doneBy: changed ? (done ? by : '') : current.doneBy,
+              doneAt: changed ? (done ? new Date().toISOString() : null) : current.doneAt,
+            } as ListItem),
+          );
+        }
+      }
+      try {
+        return await mutate(() => store.saveListItem(slug, input, by), placeItem, { refetch: false });
+      } catch (e) {
+        if (previous) patchBundle(() => previous);
+        throw e;
+      }
+    },
+    [slug, mutate, ensureIdentity, bundle, patchBundle],
+  );
+
+  const deleteListItem = useCallback(
+    async (id: string) => {
+      const by = await ensureIdentity();
+      await mutate(
+        () => store.deleteListItem(slug, id, by),
+        (b) => ({ ...b, lists: (b.lists ?? []).map((l) => ({ ...l, items: l.items.filter((i) => i.id !== id) })) }),
+        { refetch: false },
+      );
+    },
+    [slug, mutate, ensureIdentity],
+  );
+
+  const saveExpense = useCallback(
+    async (input: ExpenseInput) => {
+      const by = await ensureIdentity();
+      return mutate(
+        () => store.saveExpense(slug, input, by),
+        (b, saved) => ({
+          ...b,
+          expenses: [saved, ...(b.expenses ?? []).filter((x) => x.id !== saved.id)].sort(
+            (x, y) => y.date.localeCompare(x.date) || y.createdAt.localeCompare(x.createdAt),
+          ),
+        }),
+      );
+    },
+    [slug, mutate, ensureIdentity],
+  );
+
+  const deleteExpense = useCallback(
+    async (id: string) => {
+      const by = await ensureIdentity();
+      await mutate(
+        () => store.deleteExpense(slug, id, by),
+        (b) => ({ ...b, expenses: (b.expenses ?? []).filter((x) => x.id !== id) }),
+      );
+    },
+    [slug, mutate, ensureIdentity],
+  );
 
   const markSeen = useCallback(() => {
     const newest = bundle?.activity?.[0]?.at;
@@ -404,6 +550,12 @@ export function TripProvider({ slug, children }: { slug: string; children: React
         restoreEvent,
         updateTrip,
         deleteTrip,
+        saveList,
+        deleteList,
+        saveListItem,
+        deleteListItem,
+        saveExpense,
+        deleteExpense,
         lastSeen,
         markSeen,
         messages,

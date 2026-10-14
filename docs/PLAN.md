@@ -9,7 +9,7 @@ and notes laid out day by day, so everyone on the trip knows what is happening a
 | --- | --- |
 | App | Expo (React Native) SDK 57, Expo Router. Web first; App Store / Play Store builds later from the same code. |
 | Hosting | GitHub Pages at roadtrip.thejumpvault.com (DNS on Cloudflare). Deploys on every push to `main`. |
-| Data | Self-hosted Supabase on the owner's homelab server (shared with other apps), reached over SSH for schema changes. Tables live in a private `roadbook` schema; the app only calls ten RPC functions in `public`. The public API hostname passes only those functions and Realtime. |
+| Data | Self-hosted Supabase on the owner's homelab server (shared with other apps), reached over SSH for schema changes. Tables live in a private `roadbook` schema; the app only calls thirteen RPC functions in `public`. The public API hostname passes only those functions and Realtime. |
 | Access | No accounts. Anyone with a trip's link can view and edit it. The link holds an unguessable 16-character code. Deleted events can be restored for 30 days. |
 | Identity | No passwords. Each device picks "who you are" from the trip's travelers (or adds itself); that name is recorded on every change and message. Honour system. |
 | Times | Stored as local wall-clock time at the place (no time-zone conversion), like a printed itinerary. |
@@ -28,8 +28,13 @@ and notes laid out day by day, so everyone on the trip knows what is happening a
      updates with a 15-second fallback, unread badge, messages can point at an item).
    - *Added 2026-10-14:* a **Completed** list (Upcoming | Completed switch on the plan) and
      "Done" marks on finished items. Live updates confirmed on the real server (0.2 s).
-2. **Together** — packing and to-do checklists, costs and who-owes-what. (Comments on events
-   are covered by "Message the group about this".)
+2. **Together** — *built 2026-10-14.* **Lists** tab: Packing and To-do lists on every trip plus
+   any others, items assignable to a person (All / Mine / Unassigned), due dates and overdue
+   highlighting on to-dos, "checked by" names, copy a list from another trip. **Costs** tab: one
+   currency per trip; split equally, by exact amounts or by shares; households that settle up
+   together; fewest-payments settle-up with Mark as paid; Venmo / PayPal / Zelle handles with Pay
+   buttons; totals by category and by person; costs linked to plan items; costs in Activity.
+   (Comments on events are covered by "Message the group about this".)
 3. **Files and map** — attachments (tickets, boarding passes, PDFs) in Supabase Storage, route map.
 4. **Notifications** — web push when the trip changes.
 
