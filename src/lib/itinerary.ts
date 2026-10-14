@@ -91,6 +91,60 @@ export function buildItinerary(trip: Trip, events: TripEvent[], traveler: string
   return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
+/**
+ * When an event is over: its end time; an hour after its start when it has no end; or the
+ * end of its last day when it has no times at all.
+ */
+export function finishesAt(event: TripEvent): { date: string; time: string | null } {
+  if (event.endTime) return { date: event.endDate ?? event.startDate, time: event.endTime };
+  if (event.endDate && event.endDate > event.startDate) return { date: event.endDate, time: null };
+  if (event.startTime) {
+    const m = minutesOf(event.startTime) + 60;
+    if (m >= 24 * 60) return { date: addDays(event.startDate, 1), time: null };
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return { date: event.startDate, time: `${pad(Math.floor(m / 60))}:${pad(m % 60)}` };
+  }
+  return { date: event.startDate, time: null };
+}
+
+export function isCompleted(event: TripEvent, now: { date: string; time: string }): boolean {
+  const end = finishesAt(event);
+  if (end.date !== now.date) return end.date < now.date;
+  return end.time !== null && end.time <= now.time;
+}
+
+export interface CompletedDay {
+  date: string;
+  dayNumber: number | null;
+  events: TripEvent[];
+}
+
+/** Everything that has already happened, most recent day first, by the day it started. */
+export function buildCompleted(
+  trip: Trip,
+  events: TripEvent[],
+  now: { date: string; time: string },
+  traveler: string | null = null,
+): CompletedDay[] {
+  const byDay = new Map<string, TripEvent[]>();
+  for (const event of events) {
+    if (!appliesTo(event, traveler) || !isCompleted(event, now)) continue;
+    byDay.set(event.startDate, [...(byDay.get(event.startDate) ?? []), event]);
+  }
+  return [...byDay.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, list]) => ({
+      date,
+      dayNumber: date >= trip.startDate && date <= trip.endDate ? daysBetween(trip.startDate, date) + 1 : null,
+      // Same order as the day view: notes first, then by time, untimed check-ins last.
+      events: list.sort((x, y) => {
+        const ix: ItineraryItem = { key: x.id, part: 'start', event: x, time: x.startTime };
+        const iy: ItineraryItem = { key: y.id, part: 'start', event: y, time: y.startTime };
+        return sortKey(ix) - sortKey(iy) || x.title.localeCompare(y.title);
+      }),
+    }));
+}
+
 /** The next thing on the schedule from the viewer's current local date and time. */
 export function findNextUp(
   days: ItineraryDay[],

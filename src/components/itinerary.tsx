@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { daysBetween, formatDayLong, formatTime } from '@/lib/dates';
-import type { ItineraryDay, ItineraryItem } from '@/lib/itinerary';
+import { isCompleted, type CompletedDay, type ItineraryDay, type ItineraryItem } from '@/lib/itinerary';
 import { eventSubtitle, KINDS } from '@/lib/kinds';
 import type { TripEvent } from '@/lib/types';
 
@@ -17,15 +17,30 @@ function openEvent(slug: string, event: TripEvent) {
   router.push({ pathname: '/trip/[slug]/event/[eventId]', params: { slug, eventId: event.id } });
 }
 
+function DoneMark() {
+  const c = useTheme();
+  return (
+    <View style={styles.doneMark}>
+      <Icon name="check" size={13} color={c.primary} />
+      <ThemedText type="caption" themeColor="primary">
+        Done
+      </ThemedText>
+    </View>
+  );
+}
+
 export function EventRow({
   slug,
   item,
   allTravelers,
+  done = false,
 }: {
   slug: string;
   item: ItineraryItem;
   /** The trip's travelers, so a row can say who it is for when it isn't everyone. */
   allTravelers: string[];
+  /** Already over: shown faded with a Done mark. */
+  done?: boolean;
 }) {
   const c = useTheme();
   const { event, part } = item;
@@ -36,13 +51,14 @@ export function EventRow({
       <Pressable
         onPress={() => openEvent(slug, event)}
         accessibilityRole="link"
-        style={({ pressed }) => [styles.row, pressed && { backgroundColor: c.backgroundElement }]}>
+        style={({ pressed }) => [styles.row, done && styles.done, pressed && { backgroundColor: c.backgroundElement }]}>
         <View style={styles.timeCol}>
           {item.time ? (
             <ThemedText type="smallBold" themeColor="textSecondary">
               {formatTime(item.time)}
             </ThemedText>
           ) : null}
+          {done ? <DoneMark /> : null}
         </View>
         <View style={styles.endIcon}>
           <Icon name={k.icon} size={18} color={k.color} />
@@ -74,8 +90,8 @@ export function EventRow({
     <Pressable
       onPress={() => openEvent(slug, event)}
       accessibilityRole="link"
-      accessibilityLabel={`${k.label}: ${event.title}${item.time ? ` at ${formatTime(item.time)}` : ''}`}
-      style={({ pressed }) => [styles.row, pressed && { backgroundColor: c.backgroundElement }]}>
+      accessibilityLabel={`${k.label}: ${event.title}${item.time ? ` at ${formatTime(item.time)}` : ''}${done ? ', done' : ''}`}
+      style={({ pressed }) => [styles.row, done && styles.done, pressed && { backgroundColor: c.backgroundElement }]}>
       <View style={styles.timeCol}>
         {item.time ? <ThemedText type="smallBold">{formatTime(item.time)}</ThemedText> : null}
         {sameDayEnd ? (
@@ -83,6 +99,7 @@ export function EventRow({
             {formatTime(sameDayEnd)}
           </ThemedText>
         ) : null}
+        {done ? <DoneMark /> : null}
       </View>
       <IconTile icon={k.icon} color={k.color} size={38} />
       <View style={styles.body}>
@@ -115,10 +132,13 @@ export function DaySection({
   isLastDay,
   tripHasLodging,
   allTravelers,
+  now,
   onAdd,
 }: {
   slug: string;
   day: ItineraryDay;
+  /** The viewer's clock, to mark what is already over. */
+  now: { date: string; time: string };
   isToday: boolean;
   isLastDay: boolean;
   /** Only nag about missing lodging on trips that track lodging at all. */
@@ -161,7 +181,7 @@ export function DaySection({
           day.items.map((item, i) => (
             <View key={item.key}>
               {i > 0 ? <View style={[styles.divider, { backgroundColor: c.border }]} /> : null}
-              <EventRow slug={slug} item={item} allTravelers={allTravelers} />
+              <EventRow slug={slug} item={item} allTravelers={allTravelers} done={isCompleted(item.event, now)} />
             </View>
           ))
         )}
@@ -196,7 +216,63 @@ export function DaySection({
   );
 }
 
+/** What has already happened, most recent day first. Each item opens its full details. */
+export function CompletedDays({
+  slug,
+  days,
+  allTravelers,
+}: {
+  slug: string;
+  days: CompletedDay[];
+  allTravelers: string[];
+}) {
+  const c = useTheme();
+  return (
+    <>
+      {days.map((day) => (
+        <View key={day.date} style={styles.day}>
+          <View style={styles.dayHeader}>
+            <View style={styles.flex}>
+              <ThemedText type="label" themeColor="textSecondary">
+                {day.dayNumber ? `Day ${day.dayNumber}` : 'Outside trip dates'}
+              </ThemedText>
+              <ThemedText type="heading" accessibilityRole="header">
+                {formatDayLong(day.date)}
+              </ThemedText>
+            </View>
+            <View style={styles.doneCount}>
+              <Icon name="check" size={16} color={c.primary} />
+              <ThemedText type="caption" themeColor="primary">
+                {day.events.length} done
+              </ThemedText>
+            </View>
+          </View>
+          <Card style={styles.dayCard}>
+            {day.events.map((event, i) => (
+              <View key={event.id}>
+                {i > 0 ? <View style={[styles.divider, { backgroundColor: c.border }]} /> : null}
+                <EventRow
+                  slug={slug}
+                  item={{ key: event.id, part: 'start', event, time: event.startTime }}
+                  allTravelers={allTravelers}
+                />
+              </View>
+            ))}
+          </Card>
+        </View>
+      ))}
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
+  doneCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    paddingRight: Spacing.two,
+    paddingBottom: Spacing.one,
+  },
   flex: {
     flex: 1,
   },
@@ -256,6 +332,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one,
+    marginTop: 2,
+  },
+  done: {
+    opacity: 0.6,
+  },
+  doneMark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
     marginTop: 2,
   },
   chevron: {

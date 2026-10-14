@@ -26,6 +26,8 @@ and notes laid out day by day, so everyone on the trip knows what is happening a
    - *Added 2026-10-14:* "who are you" per device; every change signed; per-item history,
      Activity tab and a "since you last looked" card; the trip **Messenger** (group chat, live
      updates with a 15-second fallback, unread badge, messages can point at an item).
+   - *Added 2026-10-14:* a **Completed** list (Upcoming | Completed switch on the plan) and
+     "Done" marks on finished items. Live updates confirmed on the real server (0.2 s).
 2. **Together** — packing and to-do checklists, costs and who-owes-what. (Comments on events
    are covered by "Message the group about this".)
 3. **Files and map** — attachments (tickets, boarding passes, PDFs) in Supabase Storage, route map.

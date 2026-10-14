@@ -139,6 +139,38 @@ export function Banner({
   );
 }
 
+/** A two-or-more-way switch, like "Upcoming | Completed". */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const c = useTheme();
+  return (
+    <View style={[styles.segmented, { backgroundColor: c.backgroundElement }]} accessibilityRole="tablist">
+      {options.map((o) => {
+        const selected = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            style={[styles.segment, selected && { backgroundColor: c.surface, boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }]}>
+            <ThemedText type="smallBold" themeColor={selected ? 'text' : 'textSecondary'}>
+              {o.label}
+            </ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 /** A coloured rounded square holding an icon, used for event kinds. */
 export function IconTile({ icon, color, size = 40 }: { icon: IconName; color: string; size?: number }) {
   return (
@@ -259,6 +291,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.two,
+  },
+  segmented: {
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: Radius.medium,
+    gap: 3,
+  },
+  segment: {
+    flex: 1,
+    minHeight: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.small + 1,
+    paddingHorizontal: Spacing.two,
   },
   dock: {
     position: 'absolute',

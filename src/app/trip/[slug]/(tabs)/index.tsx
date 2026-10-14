@@ -6,15 +6,15 @@ import { ActivityList } from '@/components/activity-list';
 import { Avatar } from '@/components/avatar';
 import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
-import { DaySection } from '@/components/itinerary';
-import { Banner, BottomDock, Card, Chip, Fab, IconTile, Row, Screen, Toast } from '@/components/layout';
+import { CompletedDays, DaySection } from '@/components/itinerary';
+import { Banner, BottomDock, Card, Chip, Fab, IconTile, Row, Screen, Segmented, Toast } from '@/components/layout';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useTheme } from '@/hooks/use-theme';
 import { unseenActivity } from '@/lib/activity';
 import { formatDateRange, formatDayShort, formatRelative, formatTime, nowLocal, pluralDays } from '@/lib/dates';
-import { buildItinerary, findNextUp, tripLength, tripStatus, type ItineraryItem } from '@/lib/itinerary';
+import { buildCompleted, buildItinerary, findNextUp, tripLength, tripStatus, type ItineraryItem } from '@/lib/itinerary';
 import { eventSubtitle, KINDS } from '@/lib/kinds';
 import { shareLink, tripUrl } from '@/lib/share';
 import { useLoadedTrip } from '@/lib/trip-context';
@@ -107,6 +107,15 @@ export default function ItineraryScreen() {
   // Roughly more than three lines on a phone; shorter notes are shown in full.
   const longNotes = trip.notes.length > 160 || trip.notes.split('\n').length > 3;
   const unseen = unseenActivity(bundle.activity ?? [], lastSeen, me);
+  const completed = useMemo(
+    () => buildCompleted(trip, events, now, activeTraveler),
+    [trip, events, now, activeTraveler],
+  );
+  const completedCount = completed.reduce((n, d) => n + d.events.length, 0);
+  // Once the trip is over, open on what happened.
+  const [view, setView] = useState<'upcoming' | 'completed'>(() =>
+    tripStatus(trip, nowLocal().date).phase === 'past' ? 'completed' : 'upcoming',
+  );
 
   const share = async () => {
     const result = await shareLink(trip.name, tripUrl(slug));
@@ -249,31 +258,59 @@ export default function ItineraryScreen() {
           </Card>
         ) : null}
 
-        {pastDays.length > 0 ? (
-          <Button
-            label={
-              showPast
-                ? 'Hide earlier days'
-                : `Show ${pastDays.length} earlier ${pastDays.length === 1 ? 'day' : 'days'}`
-            }
-            icon={showPast ? 'chevronDown' : 'calendar'}
-            variant="ghost"
-            onPress={() => setShowPast((s) => !s)}
+        {events.length > 0 ? (
+          <Segmented
+            options={[
+              { value: 'upcoming', label: status.phase === 'past' ? 'Day by day' : 'Upcoming' },
+              { value: 'completed', label: completedCount ? `Completed · ${completedCount}` : 'Completed' },
+            ]}
+            value={view}
+            onChange={setView}
           />
         ) : null}
 
-        {visibleDays.map((day) => (
-          <DaySection
-            key={day.date}
-            slug={slug}
-            day={day}
-            isToday={day.date === now.date}
-            isLastDay={day.date === trip.endDate}
-            tripHasLodging={tripHasLodging}
-            allTravelers={trip.travelers}
-            onAdd={addEvent}
-          />
-        ))}
+        {view === 'completed' ? (
+          completed.length > 0 ? (
+            <CompletedDays slug={slug} days={completed} allTravelers={trip.travelers} />
+          ) : (
+            <Card>
+              <ThemedText type="heading">Nothing completed yet</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Flights, drives, stays and plans move here once they’re over, so everyone can look back at what
+                happened and find the details later.
+              </ThemedText>
+            </Card>
+          )
+        ) : (
+          <>
+            {pastDays.length > 0 ? (
+              <Button
+                label={
+                  showPast
+                    ? 'Hide earlier days'
+                    : `Show ${pastDays.length} earlier ${pastDays.length === 1 ? 'day' : 'days'}`
+                }
+                icon={showPast ? 'chevronDown' : 'calendar'}
+                variant="ghost"
+                onPress={() => setShowPast((s) => !s)}
+              />
+            ) : null}
+
+            {visibleDays.map((day) => (
+              <DaySection
+                key={day.date}
+                slug={slug}
+                day={day}
+                isToday={day.date === now.date}
+                isLastDay={day.date === trip.endDate}
+                tripHasLodging={tripHasLodging}
+                allTravelers={trip.travelers}
+                now={now}
+                onAdd={addEvent}
+              />
+            ))}
+          </>
+        )}
       </Screen>
     </>
   );

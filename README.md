@@ -16,6 +16,8 @@ Live at **https://roadtrip.thejumpvault.com**.
 - **Per-person plans.** Mark who each plan is for, then filter the trip to "just Grandma".
 - **Today and next up.** During the trip, past days fold away and the next thing on the
   schedule sits at the top.
+- **Completed.** Everything that has already happened, most recent day first, with full
+  details a tap away; today's finished items are marked Done in the plan.
 - **One link to share.** No accounts. Anyone with the link can view and edit; deleted items
   can be restored for 30 days.
 - **Everyone signs their changes.** Each device picks who it is from the trip's travelers.

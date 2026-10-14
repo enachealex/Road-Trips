@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildItinerary, findNextUp, tripLength, tripStatus } from './itinerary';
+import { buildCompleted, buildItinerary, findNextUp, finishesAt, isCompleted, tripLength, tripStatus } from './itinerary';
 import type { Trip, TripEvent } from './types';
 
 const trip: Trip = {
@@ -86,6 +86,34 @@ describe('buildItinerary', () => {
     expect(mom.some((d) => d.items.some((i) => i.event.id === 'redeye'))).toBe(false);
     const alex = buildItinerary(trip, events, 'ALEX');
     expect(alex[1].items.some((i) => i.key === 'redeye')).toBe(true);
+  });
+});
+
+describe('completed', () => {
+  it('knows when each kind of event is over', () => {
+    const at = (date: string, time: string) => ({ date, time });
+    const hotel = events.find((e) => e.id === 'hotel')!; // checks out Jul 3, 11:00
+    expect(isCompleted(hotel, at('2027-07-03', '10:59'))).toBe(false);
+    expect(isCompleted(hotel, at('2027-07-03', '11:00'))).toBe(true);
+    const drive = events.find((e) => e.id === 'drive')!; // 09:00, no end: done an hour later
+    expect(finishesAt(drive)).toEqual({ date: '2027-07-03', time: '10:00' });
+    expect(isCompleted(drive, at('2027-07-03', '09:30'))).toBe(false);
+    const note = events.find((e) => e.id === 'note')!; // untimed: done once the day is over
+    expect(isCompleted(note, at('2027-07-01', '23:59'))).toBe(false);
+    expect(isCompleted(note, at('2027-07-02', '00:00'))).toBe(true);
+    const cabin = events.find((e) => e.id === 'cabin')!; // untimed multi-day: end of its last day
+    expect(finishesAt(cabin)).toEqual({ date: '2027-07-05', time: null });
+  });
+
+  it('lists what has happened, most recent day first', () => {
+    const done = buildCompleted(trip, events, { date: '2027-07-03', time: '12:00' });
+    expect(done.map((d) => [d.date, d.dayNumber, d.events.map((e) => e.id)])).toEqual([
+      ['2027-07-03', 3, ['drive']],
+      ['2027-07-01', 1, ['note', 'redeye', 'hotel']],
+      ['2027-06-28', null, ['early']],
+    ]);
+    const forMom = buildCompleted(trip, events, { date: '2027-07-03', time: '12:00' }, 'Mom');
+    expect(forMom.flatMap((d) => d.events.map((e) => e.id))).not.toContain('redeye');
   });
 });
 
