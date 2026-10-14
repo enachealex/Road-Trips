@@ -87,8 +87,16 @@ export default function HomeScreen() {
     setSampleError(null);
     try {
       const sample = buildSampleTrip();
-      const trip = await store.createTrip(sample.trip);
-      await Promise.all(sample.events.map((e) => store.saveEvent(trip.slug, e)));
+      const trip = await store.createTrip(sample.trip, sample.organizer);
+      const saved = await Promise.all(sample.events.map((e) => store.saveEvent(trip.slug, e)));
+      const idByTitle = new Map(saved.map((e) => [e.title, e.id]));
+      for (const m of sample.messages) {
+        await store.postMessage(trip.slug, {
+          body: m.body,
+          by: m.by,
+          eventId: m.about ? (idByTitle.get(m.about) ?? null) : null,
+        });
+      }
       rememberTrip(trip);
       router.push({ pathname: '/trip/[slug]', params: { slug: trip.slug } });
     } catch (e) {

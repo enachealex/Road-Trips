@@ -18,6 +18,11 @@ Live at **https://roadtrip.thejumpvault.com**.
   schedule sits at the top.
 - **One link to share.** No accounts. Anyone with the link can view and edit; deleted items
   can be restored for 30 days.
+- **Everyone signs their changes.** Each device picks who it is from the trip's travelers.
+  Every addition, edit and deletion carries that name: each item shows its history, the
+  Activity tab lists every change, and a "since you last looked" card shows what others did.
+- **Messenger.** A group chat for the trip, live between devices, with an unread badge.
+  "Message the group about this" links a message to a flight, hotel or plan.
 - **Works offline.** The last copy of each trip stays readable without signal, and the site
   itself opens offline once it has been visited.
 - **Maps and calendars.** Directions and map links for every place, flight status links,

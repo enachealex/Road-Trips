@@ -1,8 +1,10 @@
-import { router, Stack } from 'expo-router';
+import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 
-import { Button, IconButton } from '@/components/button';
+import { ActivityList } from '@/components/activity-list';
+import { Avatar } from '@/components/avatar';
+import { Button } from '@/components/button';
 import { Icon } from '@/components/icon';
 import { DaySection } from '@/components/itinerary';
 import { Banner, BottomDock, Card, Chip, Fab, IconTile, Row, Screen, Toast } from '@/components/layout';
@@ -10,6 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useTheme } from '@/hooks/use-theme';
+import { unseenActivity } from '@/lib/activity';
 import { formatDateRange, formatDayShort, formatRelative, formatTime, nowLocal, pluralDays } from '@/lib/dates';
 import { buildItinerary, findNextUp, tripLength, tripStatus, type ItineraryItem } from '@/lib/itinerary';
 import { eventSubtitle, KINDS } from '@/lib/kinds';
@@ -82,7 +85,8 @@ function NextUp({ slug, date, item, today }: { slug: string; date: string; item:
 
 export default function ItineraryScreen() {
   const c = useTheme();
-  const { slug, bundle, traveler, setTraveler, offlineSince, refresh, refreshing } = useLoadedTrip();
+  const { slug, bundle, traveler, setTraveler, offlineSince, refresh, refreshing, me, chooseIdentity, lastSeen, markSeen } =
+    useLoadedTrip();
   const { trip, events } = bundle;
   useDocumentTitle(`${trip.name} · Roadbook`);
   const now = useNow();
@@ -102,6 +106,7 @@ export default function ItineraryScreen() {
   const length = tripLength(trip);
   // Roughly more than three lines on a phone; shorter notes are shown in full.
   const longNotes = trip.notes.length > 160 || trip.notes.split('\n').length > 3;
+  const unseen = unseenActivity(bundle.activity ?? [], lastSeen, me);
 
   const share = async () => {
     const result = await shareLink(trip.name, tripUrl(slug));
@@ -121,22 +126,6 @@ export default function ItineraryScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: trip.name,
-          headerLeft: () => <IconButton icon="home" onPress={() => router.navigate('/')} accessibilityLabel="My trips" />,
-          headerRight: () => (
-            <View style={styles.headerButtons}>
-              <IconButton icon="share" onPress={share} accessibilityLabel="Share this trip" />
-              <IconButton
-                icon="settings"
-                onPress={() => router.push({ pathname: '/trip/[slug]/settings', params: { slug } })}
-                accessibilityLabel="Share and settings"
-              />
-            </View>
-          ),
-        }}
-      />
       <Screen
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         footer={
@@ -173,6 +162,19 @@ export default function ItineraryScreen() {
               </ThemedText>
             </View>
           ) : null}
+          <View style={[styles.inline, styles.me]}>
+            {me ? <Avatar name={me} size={24} /> : <Icon name="person" size={18} color={c.textSecondary} />}
+            <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
+              {me ? (
+                <>
+                  You’re <ThemedText type="smallBold">{me}</ThemedText> on this device
+                </>
+              ) : (
+                'You haven’t said who you are yet'
+              )}
+            </ThemedText>
+            <Button label={me ? 'Switch' : 'Choose'} compact variant="ghost" onPress={() => void chooseIdentity()} />
+          </View>
           {trip.notes && longNotes ? (
             <Pressable
               onPress={() => setNotesOpen((o) => !o)}
@@ -189,6 +191,28 @@ export default function ItineraryScreen() {
             <ThemedText type="small">{trip.notes}</ThemedText>
           ) : null}
         </Card>
+
+        {unseen.length > 0 ? (
+          <Card style={{ borderColor: c.primary }}>
+            <View style={styles.inline}>
+              <Icon name="history" size={18} color={c.primary} />
+              <ThemedText type="label" themeColor="primary" style={styles.flex}>
+                {`Since you last looked · ${unseen.length} ${unseen.length === 1 ? 'change' : 'changes'}`}
+              </ThemedText>
+            </View>
+            <ActivityList slug={slug} entries={unseen.slice(0, 3)} />
+            <Row>
+              {unseen.length > 3 ? (
+                <Button
+                  label={`See all ${unseen.length}`}
+                  compact
+                  onPress={() => router.navigate({ pathname: '/trip/[slug]/activity', params: { slug } })}
+                />
+              ) : null}
+              <Button label="Got it" compact variant="ghost" icon="check" onPress={markSeen} />
+            </Row>
+          </Card>
+        ) : null}
 
         {next ? <NextUp slug={slug} date={next.day.date} item={next.item} today={now.date} /> : null}
 
@@ -259,10 +283,6 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: Spacing.one,
-  },
   summaryTop: {
     flexDirection: 'row',
     gap: Spacing.three,
@@ -271,6 +291,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  me: {
+    marginTop: -Spacing.one,
   },
   more: {
     marginTop: Spacing.one,

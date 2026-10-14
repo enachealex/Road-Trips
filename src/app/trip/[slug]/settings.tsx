@@ -2,10 +2,10 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
+import { Avatar } from '@/components/avatar';
 import { Button } from '@/components/button';
 import { useConfirm } from '@/components/confirm-dialog';
 import { Banner, Card, Chip, IconTile, Row, Screen, SectionTitle, Toast } from '@/components/layout';
-import { TextField } from '@/components/text-field';
 import { ThemedText } from '@/components/themed-text';
 import { TripForm } from '@/components/trip-form';
 import { Radius, Spacing } from '@/constants/theme';
@@ -13,7 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatRelative } from '@/lib/dates';
 import { buildIcs, icsFilename } from '@/lib/ics';
 import { KINDS } from '@/lib/kinds';
-import { forgetTrip, getMyName, setMyName } from '@/lib/my-trips';
+import { forgetTrip } from '@/lib/my-trips';
 import { copyText, downloadTextFile, shareLink, tripUrl } from '@/lib/share';
 import { errorMessage, isDemoMode } from '@/lib/store';
 import { useLoadedTrip } from '@/lib/trip-context';
@@ -21,11 +21,10 @@ import { useLoadedTrip } from '@/lib/trip-context';
 export default function TripSettingsScreen() {
   const c = useTheme();
   const confirm = useConfirm();
-  const { slug, bundle, traveler, updateTrip, restoreEvent, deleteTrip } = useLoadedTrip();
+  const { slug, bundle, traveler, updateTrip, restoreEvent, deleteTrip, me, chooseIdentity } = useLoadedTrip();
   const { trip, events, deletedEvents } = bundle;
   const [toast, setToast] = useState<string | null>(null);
   const [calendarFor, setCalendarFor] = useState<string | null>(traveler);
-  const [name, setName] = useState(getMyName);
   const [failure, setFailure] = useState<string | null>(null);
   const link = tripUrl(slug);
 
@@ -188,20 +187,26 @@ export default function TripSettingsScreen() {
 
       <SectionTitle>On this device</SectionTitle>
       <Card>
-        <TextField
-          label="Your name"
-          hint="Shown as who made changes"
-          value={name}
-          onChangeText={setName}
-          onBlur={() => setMyName(name)}
-          onSubmitEditing={() => {
-            setMyName(name);
-            flash('Name saved');
-          }}
-          autoComplete="name"
-          placeholder="Your name"
-        />
-        <Button label="Remove from this device" icon="close" onPress={removeFromDevice} />
+        <View style={styles.meRow}>
+          {me ? <Avatar name={me} size={36} /> : null}
+          <View style={styles.flex}>
+            <ThemedText type="heading">{me ? `You’re ${me}` : 'You haven’t said who you are'}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Your name goes on the changes and messages you make from this device.
+            </ThemedText>
+          </View>
+        </View>
+        <Row>
+          <Button
+            label={me ? 'Switch person' : 'Choose who you are'}
+            icon="people"
+            onPress={async () => {
+              const picked = await chooseIdentity();
+              if (picked) flash(`You’re now ${picked}`);
+            }}
+          />
+          <Button label="Remove from this device" icon="close" onPress={removeFromDevice} />
+        </Row>
       </Card>
 
       {failure ? <Banner icon="warning" tone="danger">{failure}</Banner> : null}
@@ -228,6 +233,11 @@ const styles = StyleSheet.create({
   list: {
     padding: Spacing.two,
     gap: Spacing.two,
+  },
+  meRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three - 4,
   },
   deletedRow: {
     flexDirection: 'row',

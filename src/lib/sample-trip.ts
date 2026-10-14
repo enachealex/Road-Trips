@@ -5,7 +5,19 @@ import type { EventInput, TripInput } from './types';
  * A 12-day coast road trip that started two days ago, so a fresh sample shows the
  * "today" and "next up" views straight away.
  */
-export function buildSampleTrip(today: string = nowLocal().date): { trip: TripInput; events: EventInput[] } {
+export interface SampleMessage {
+  by: string;
+  body: string;
+  /** Title of the event the message is about. */
+  about?: string;
+}
+
+export function buildSampleTrip(today: string = nowLocal().date): {
+  organizer: string;
+  trip: TripInput;
+  events: EventInput[];
+  messages: SampleMessage[];
+} {
   const d = (offset: number) => addDays(today, offset - 2);
   const family = ['Mom', 'Dad', 'Maya', 'Leo'];
 
@@ -23,11 +35,12 @@ export function buildSampleTrip(today: string = nowLocal().date): { trip: TripIn
     notes: '',
     travelers: [],
     details: {},
-    updatedBy: 'Sample',
+    updatedBy: 'Mom',
     ...e,
   });
 
   return {
+    organizer: 'Mom',
     trip: {
       name: 'Pacific Coast Road Trip',
       startDate: d(0),
@@ -45,7 +58,7 @@ export function buildSampleTrip(today: string = nowLocal().date): { trip: TripIn
         details: { airline: 'AA', flightNumber: '2311', seats: '22A–D', terminal: 'Terminal C' },
       }),
       ev({
-        kind: 'flight', title: 'UA 1180', startDate: d(0), startTime: '10:05', endDate: d(0), endTime: '12:30',
+        kind: 'flight', updatedBy: 'Grandma', title: 'UA 1180', startDate: d(0), startTime: '10:05', endDate: d(0), endTime: '12:30',
         location: 'ORD', endLocation: 'SFO', confirmation: 'MM4K2P', travelers: ['Grandma'],
         details: { airline: 'UA', flightNumber: '1180', seats: '8C' },
         notes: 'Dad picks Grandma up at arrivals, door 9.',
@@ -66,7 +79,7 @@ export function buildSampleTrip(today: string = nowLocal().date): { trip: TripIn
         location: 'Scoma’s', address: '1965 Al Scoma Way, San Francisco, CA', notes: 'Reservation for 5 under Dad.',
       }),
       ev({
-        kind: 'activity', title: 'Bike across the Golden Gate', startDate: d(1), startTime: '09:30', endTime: '13:00',
+        kind: 'activity', updatedBy: 'Dad', title: 'Bike across the Golden Gate', startDate: d(1), startTime: '09:30', endTime: '13:00',
         location: 'Blazing Saddles', address: '2715 Hyde St, San Francisco, CA', confirmation: 'BS-30021',
         travelers: family, notes: 'Grandma meets us in Sausalito by ferry.',
       }),
@@ -92,7 +105,7 @@ export function buildSampleTrip(today: string = nowLocal().date): { trip: TripIn
         location: 'Carmel Beach', address: 'Carmel-by-the-Sea, CA',
       }),
       ev({
-        kind: 'drive', title: 'Big Sur on Highway 1', startDate: d(4), startTime: '10:00', endTime: '16:00',
+        kind: 'drive', updatedBy: 'Dad', title: 'Big Sur on Highway 1', startDate: d(4), startTime: '10:00', endTime: '16:00',
         location: 'Monterey, CA', endLocation: 'San Luis Obispo, CA', details: { distance: '140 mi', driver: 'Dad' },
         notes: 'No cell signal for most of Big Sur. Lunch stop at Nepenthe. Fill up the tank in Carmel.',
       }),
@@ -105,7 +118,7 @@ export function buildSampleTrip(today: string = nowLocal().date): { trip: TripIn
         location: 'San Luis Obispo, CA', endLocation: 'Santa Barbara, CA', details: { distance: '95 mi' },
       }),
       ev({
-        kind: 'lodging', title: 'Beach house rental', startDate: d(5), startTime: '16:00', endDate: d(7), endTime: '10:00',
+        kind: 'lodging', updatedBy: 'Dad', title: 'Beach house rental', startDate: d(5), startTime: '16:00', endDate: d(7), endTime: '10:00',
         location: 'Beach house', address: '15 Butterfly Ln, Santa Barbara, CA', notes: 'Door code is in the group chat.',
       }),
       ev({
@@ -117,7 +130,7 @@ export function buildSampleTrip(today: string = nowLocal().date): { trip: TripIn
         location: 'Disneyland Hotel', address: '1150 Magic Way, Anaheim, CA', confirmation: 'DL-448210',
       }),
       ev({
-        kind: 'activity', title: 'Disneyland', startDate: d(8), startTime: '08:00', endDate: d(9), endTime: '22:00',
+        kind: 'activity', updatedBy: 'Maya', title: 'Disneyland', startDate: d(8), startTime: '08:00', endDate: d(9), endTime: '22:00',
         location: 'Disneyland Park', address: '1313 Disneyland Dr, Anaheim, CA',
         notes: 'Two-day park hopper tickets for everyone.',
       }),
@@ -135,6 +148,12 @@ export function buildSampleTrip(today: string = nowLocal().date): { trip: TripIn
         location: 'LAX', endLocation: 'ORD', confirmation: 'MM4K2P', travelers: ['Grandma'],
         details: { airline: 'UA', flightNumber: '2207' },
       }),
+    ],
+    messages: [
+      { by: 'Grandma', body: 'Landing at 12:30. Where should I meet you?', about: 'UA 1180' },
+      { by: 'Dad', body: 'Arrivals, door 9. I’ll have the minivan.', about: 'UA 1180' },
+      { by: 'Maya', body: 'Can we do the aquarium first thing? Pleeease' },
+      { by: 'Mom', body: 'It’s booked for the afternoon on day 3. Bring jackets, the coast gets cold!' },
     ],
   };
 }

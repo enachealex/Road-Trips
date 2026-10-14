@@ -1,0 +1,150 @@
+import { formatDayShort, formatTime, isValidDate, isValidTime } from './dates';
+import { KINDS } from './kinds';
+import { sameName } from './people';
+import type { ActivityChange, ActivityEntry, EventKind, Trip, TripEvent } from './types';
+
+// The activity log: who added, changed, deleted or restored what. The database records the
+// changed fields (roadbook.event_changes in supabase/schema.sql); eventChanges/tripChanges
+// below produce the same shape for demo mode.
+
+const EVENT_FIELDS = [
+  'title', 'kind', 'startDate', 'startTime', 'endDate', 'endTime', 'location', 'address',
+  'endLocation', 'endAddress', 'travelers', 'confirmation', 'phone', 'url',
+] as const;
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+export function eventChanges(o: TripEvent, n: TripEvent): ActivityChange[] {
+  const out: ActivityChange[] = [];
+  for (const f of EVENT_FIELDS) if (!same(o[f], n[f])) out.push({ field: f, from: o[f] ?? null, to: n[f] ?? null });
+  const keys = [...new Set([...Object.keys(o.details), ...Object.keys(n.details)])].sort();
+  for (const k of keys) {
+    if (!same(o.details[k], n.details[k])) {
+      out.push({ field: `details.${k}`, from: o.details[k] ?? null, to: n.details[k] ?? null });
+    }
+  }
+  if (o.notes !== n.notes) out.push({ field: 'notes', from: null, to: null });
+  return out;
+}
+
+export function tripChanges(o: Trip, n: Trip): ActivityChange[] {
+  const out: ActivityChange[] = [];
+  for (const f of ['name', 'startDate', 'endDate', 'travelers'] as const) {
+    if (!same(o[f], n[f])) out.push({ field: f, from: o[f], to: n[f] });
+  }
+  if (o.notes !== n.notes) out.push({ field: 'notes', from: null, to: null });
+  return out;
+}
+
+const isBlank = (v: unknown) => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
+
+function show(v: unknown): string {
+  if (typeof v === 'string' && isValidDate(v)) return formatDayShort(v);
+  if (typeof v === 'string' && isValidTime(v)) return formatTime(v);
+  if (Array.isArray(v)) return v.join(', ');
+  return String(v);
+}
+
+function line(label: string, from: unknown, to: unknown): string {
+  if (isBlank(from)) return `${label}: ${show(to)}`;
+  if (isBlank(to)) return `${label} removed`;
+  return `${label}: ${show(from)} → ${show(to)}`;
+}
+
+function peopleLine(label: string, from: unknown, to: unknown, emptyMeans: string): string {
+  const a = Array.isArray(from) ? (from as string[]) : [];
+  const b = Array.isArray(to) ? (to as string[]) : [];
+  return `${label}: ${a.length ? a.join(', ') : emptyMeans} → ${b.length ? b.join(', ') : emptyMeans}`;
+}
+
+function describeEventChange(c: ActivityChange, kind: EventKind | null): string {
+  const k = KINDS[kind ?? 'note'];
+  if (c.field.startsWith('details.')) {
+    const key = c.field.slice('details.'.length);
+    const label = Object.values(KINDS).flatMap((x) => x.details).find((d) => d.key === key)?.label ?? key;
+    return line(label, c.from, c.to);
+  }
+  switch (c.field) {
+    case 'title':
+      return `Renamed from “${show(c.from)}”`;
+    case 'kind':
+      return `Type: ${KINDS[c.from as EventKind]?.label ?? c.from} → ${KINDS[c.to as EventKind]?.label ?? c.to}`;
+    case 'startDate':
+      return line(`${k.startLabel} date`, c.from, c.to);
+    case 'startTime':
+      return line(`${k.startLabel} time`, c.from, c.to);
+    case 'endDate':
+      return line(`${k.endLabel} date`, c.from, c.to);
+    case 'endTime':
+      return line(`${k.endLabel} time`, c.from, c.to);
+    case 'location':
+      return line(k.places === 'route' ? k.fromLabel : 'Place', c.from, c.to);
+    case 'endLocation':
+      return line(k.toLabel, c.from, c.to);
+    case 'address':
+      return line('Address', c.from, c.to);
+    case 'endAddress':
+      return line('Arrival address', c.from, c.to);
+    case 'travelers':
+      return peopleLine('Who', c.from, c.to, 'Everyone');
+    case 'confirmation':
+      return line('Confirmation #', c.from, c.to);
+    case 'phone':
+      return line('Phone', c.from, c.to);
+    case 'url':
+      return line('Link', c.from, c.to);
+    case 'notes':
+      return 'Updated the notes';
+    default:
+      return line(c.field, c.from, c.to);
+  }
+}
+
+function describeTripChange(c: ActivityChange): string {
+  switch (c.field) {
+    case 'name':
+      return `Renamed from “${show(c.from)}” to “${show(c.to)}”`;
+    case 'startDate':
+      return line('First day', c.from, c.to);
+    case 'endDate':
+      return line('Last day', c.from, c.to);
+    case 'travelers': {
+      const a = (c.from as string[]) ?? [];
+      const b = (c.to as string[]) ?? [];
+      const added = b.filter((x) => !a.some((y) => sameName(x, y)));
+      const removed = a.filter((x) => !b.some((y) => sameName(x, y)));
+      return [added.length ? `Added ${added.join(', ')}` : '', removed.length ? `Removed ${removed.join(', ')}` : '']
+        .filter(Boolean)
+        .join(' · ') || 'Reordered the travelers';
+    }
+    case 'notes':
+      return 'Updated the trip notes';
+    default:
+      return line(c.field, c.from, c.to);
+  }
+}
+
+/** "Dad changed Dinner" plus one line per changed field. */
+export function describeActivity(entry: ActivityEntry): { text: string; details: string[] } {
+  const who = entry.actor || 'Someone';
+  switch (entry.action) {
+    case 'trip_created':
+      return { text: `${who} created the trip`, details: [] };
+    case 'trip_updated':
+      return { text: `${who} updated the trip details`, details: entry.changes.map(describeTripChange) };
+    case 'event_added':
+      return { text: `${who} added ${entry.title}`, details: [] };
+    case 'event_updated':
+      return { text: `${who} changed ${entry.title}`, details: entry.changes.map((c) => describeEventChange(c, entry.kind)) };
+    case 'event_deleted':
+      return { text: `${who} deleted ${entry.title}`, details: [] };
+    case 'event_restored':
+      return { text: `${who} restored ${entry.title}`, details: [] };
+  }
+}
+
+/** Changes other people made since this device last looked. */
+export function unseenActivity(activity: ActivityEntry[], lastSeen: string | null, me: string | null): ActivityEntry[] {
+  if (!lastSeen) return [];
+  return activity.filter((a) => a.at > lastSeen && !(me && sameName(a.actor, me)));
+}

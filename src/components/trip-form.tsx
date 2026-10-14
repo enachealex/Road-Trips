@@ -3,6 +3,8 @@ import { StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { daysBetween, isValidDate } from '@/lib/dates';
+import { getMyName } from '@/lib/my-trips';
+import { sameName } from '@/lib/people';
 import { errorMessage } from '@/lib/store';
 import type { TripInput } from '@/lib/types';
 
@@ -18,14 +20,18 @@ const EMPTY: TripInput = { name: '', startDate: '', endDate: '', travelers: [], 
 export function TripForm({
   initial = EMPTY,
   submitLabel,
+  askOrganizer = false,
   onSubmit,
 }: {
   initial?: TripInput;
   submitLabel: string;
-  onSubmit: (input: TripInput) => Promise<void>;
+  /** New trips ask who is planning, who is added to the travelers and signed in on this device. */
+  askOrganizer?: boolean;
+  onSubmit: (input: TripInput, organizer: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<TripInput>(initial);
-  const [errors, setErrors] = useState<Partial<Record<keyof TripInput, string>>>({});
+  const [organizer, setOrganizer] = useState(() => (askOrganizer ? getMyName() : ''));
+  const [errors, setErrors] = useState<Partial<Record<keyof TripInput | 'organizer', string>>>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -33,6 +39,7 @@ export function TripForm({
 
   const validate = () => {
     const next: typeof errors = {};
+    if (askOrganizer && !organizer.trim()) next.organizer = 'Add your name so everyone knows who planned this.';
     if (!draft.name.trim()) next.name = 'Give the trip a name.';
     if (!isValidDate(draft.startDate)) next.startDate = 'Pick the first day.';
     if (!isValidDate(draft.endDate)) next.endDate = 'Pick the last day.';
@@ -49,7 +56,10 @@ export function TripForm({
     setSaving(true);
     setFailure(null);
     try {
-      await onSubmit({ ...draft, name: draft.name.trim() });
+      const me = organizer.trim();
+      const travelers =
+        askOrganizer && !draft.travelers.some((t) => sameName(t, me)) ? [me, ...draft.travelers] : draft.travelers;
+      await onSubmit({ ...draft, name: draft.name.trim(), travelers }, me);
     } catch (e) {
       setFailure(errorMessage(e));
     } finally {
@@ -59,6 +69,21 @@ export function TripForm({
 
   return (
     <View style={styles.form}>
+      {askOrganizer ? (
+        <Card>
+          <TextField
+            label="Who’s planning this?"
+            hint="You’re added to the trip"
+            value={organizer}
+            onChangeText={setOrganizer}
+            placeholder="e.g. Mom, Alex, Grandpa Joe"
+            error={errors.organizer}
+            maxLength={60}
+            autoComplete="off"
+            autoCorrect={false}
+          />
+        </Card>
+      ) : null}
       <Card>
         <TextField
           label="Trip name"

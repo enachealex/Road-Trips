@@ -2,10 +2,8 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import { isValidDate, isValidTime } from '@/lib/dates';
 import { fallbackTitle, KIND_ORDER, KINDS } from '@/lib/kinds';
-import { getMyName, setMyName } from '@/lib/my-trips';
 import { errorMessage } from '@/lib/store';
 import type { EventInput, EventKind, Trip } from '@/lib/types';
 
@@ -98,13 +96,10 @@ export function EventForm({
   onSubmit: (input: EventInput) => Promise<void>;
   onCancel: () => void;
 }) {
-  const c = useTheme();
   const [draft, setDraft] = useState<Draft>(() => toDraft(initial));
   const [errors, setErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [needsName] = useState(() => !getMyName());
-  const [name, setName] = useState('');
 
   const k = KINDS[draft.kind];
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
@@ -140,7 +135,6 @@ export function EventForm({
       setFailure('Check the highlighted dates and times.');
       return;
     }
-    if (needsName && name.trim()) setMyName(name);
 
     // Drop details that belong to other kinds or were left blank.
     const details: Record<string, string> = {};
@@ -360,19 +354,6 @@ export function EventForm({
           multiline
         />
       </Card>
-
-      {needsName ? (
-        <Card style={{ backgroundColor: c.primarySoft, borderColor: c.primarySoft }}>
-          <TextField
-            label="Your name"
-            hint="Asked once"
-            value={name}
-            onChangeText={setName}
-            placeholder="So others can see who made changes"
-            autoComplete="name"
-          />
-        </Card>
-      ) : null}
 
       {failure ? (
         <Banner icon="warning" tone="danger">

@@ -2,6 +2,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
+import { ActivityList } from '@/components/activity-list';
 import { Button, IconButton } from '@/components/button';
 import { useConfirm } from '@/components/confirm-dialog';
 import { Icon } from '@/components/icon';
@@ -84,6 +85,7 @@ export default function EventDetailScreen() {
   }
 
   const k = KINDS[event.kind];
+  const history = (bundle.activity ?? []).filter((a) => a.eventId === event.id);
   const spansDays = !!event.endDate && event.endDate !== event.startDate;
   const nights = event.kind === 'lodging' && event.endDate ? daysBetween(event.startDate, event.endDate) : 0;
   const details = k.details.filter((f) => event.details[f.key]);
@@ -265,6 +267,13 @@ export default function EventDetailScreen() {
 
         {failure ? <Banner icon="warning" tone="danger">{failure}</Banner> : null}
 
+        <Button
+          label="Message the group about this"
+          icon="chat"
+          // dismissTo goes back to the trip's existing tabs instead of stacking a second copy.
+          onPress={() => router.dismissTo({ pathname: '/trip/[slug]/messages', params: { slug, about: event.id } })}
+        />
+
         <Row>
           <Button label="Edit" icon="edit" variant="primary" onPress={edit} style={styles.flex} />
           <Button
@@ -276,10 +285,26 @@ export default function EventDetailScreen() {
           <Button label="Delete" icon="delete" variant="danger" onPress={remove} style={styles.flex} />
         </Row>
 
-        <ThemedText type="caption" themeColor="textSecondary" style={styles.footnote}>
-          {event.updatedBy ? `Last changed by ${event.updatedBy} ` : 'Last changed '}
-          {formatRelative(event.updatedAt)}
-        </ThemedText>
+        <Card style={styles.history}>
+          <View style={styles.historyHead}>
+            <ThemedText type="label" themeColor="textSecondary">
+              History
+            </ThemedText>
+            <ThemedText type="caption" themeColor="textSecondary">
+              {event.createdBy ? `Added by ${event.createdBy} · ` : 'Added '}
+              {formatRelative(event.createdAt)}
+            </ThemedText>
+          </View>
+          {history.length > 0 ? (
+            <ActivityList slug={slug} entries={history} linkEvents={false} />
+          ) : (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.historyEmpty}>
+              {event.updatedBy && event.updatedAt !== event.createdAt
+                ? `Last changed by ${event.updatedBy} ${formatRelative(event.updatedAt)}.`
+                : 'No changes since it was added.'}
+            </ThemedText>
+          )}
+        </Card>
       </Screen>
     </>
   );
@@ -320,7 +345,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.one,
   },
-  footnote: {
-    textAlign: 'center',
+  history: {
+    padding: Spacing.one,
+    gap: 0,
+  },
+  historyHead: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    padding: Spacing.three - 4,
+  },
+  historyEmpty: {
+    paddingHorizontal: Spacing.three - 4,
+    paddingBottom: Spacing.three - 4,
   },
 });

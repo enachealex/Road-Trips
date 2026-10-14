@@ -108,6 +108,20 @@ export function formatRelative(iso: string, now: Date = new Date()): string {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(then);
 }
 
+/** A real moment's clock time in the viewer's zone: "2:15 PM". */
+export function formatClock(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+}
+
+/** "Today", "Yesterday" or "Wed, Jul 8" for a real moment, in the viewer's zone. */
+export function dayLabel(iso: string, now: Date = new Date()): string {
+  const day = nowLocal(new Date(iso)).date;
+  const today = nowLocal(now).date;
+  if (day === today) return 'Today';
+  if (day === addDays(today, -1)) return 'Yesterday';
+  return formatDayShort(day);
+}
+
 /** "3 days", "1 day" */
 export function pluralDays(n: number): string {
   return `${n} ${n === 1 ? 'day' : 'days'}`;

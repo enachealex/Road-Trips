@@ -84,6 +84,77 @@ describe('schema', () => {
     expect(bundle.events).toHaveLength(1);
   });
 
+  it('records who did what, with the fields an edit changed', async () => {
+    const ev = await asAnon<any>('select upsert_event($1, $2::jsonb)', [
+      slug,
+      json({
+        kind: 'meal', title: 'Dinner', startDate: '2027-07-02', startTime: '18:30',
+        details: { party: '5' }, notes: 'Booth', updatedBy: 'Mom',
+      }),
+    ]);
+    expect(ev.createdBy).toBe('Mom');
+    const edited = await asAnon<any>('select upsert_event($1, $2::jsonb)', [
+      slug,
+      json({ ...ev, startTime: '19:00', travelers: ['Alex'], details: { party: '6' }, notes: 'Patio', updatedBy: 'Dad' }),
+    ]);
+    expect(edited.createdBy).toBe('Mom');
+    expect(edited.updatedBy).toBe('Dad');
+
+    // Saving with no changes adds nothing to the log.
+    await asAnon('select upsert_event($1, $2::jsonb)', [slug, json({ ...edited, updatedBy: 'Dad' })]);
+    await asAnon('select update_trip($1, $2::jsonb)', [slug, json({ name: 'Summer 2027', by: 'Alex' })]);
+
+    const { activity } = await asAnon<any>('select get_trip($1)', [slug]);
+    expect(activity.map((a: any) => `${a.actor} ${a.action} ${a.title}`)).toEqual([
+      'Alex trip_updated Summer 2027',
+      'Dad event_updated Dinner',
+      'Mom event_added Dinner',
+      'Alex event_restored AA 101',
+      'Mom event_deleted AA 101',
+      ' event_updated AA 101',
+      ' event_added AA 100',
+      ' trip_created Summer',
+    ]);
+    expect(activity[1].changes).toEqual([
+      { field: 'startTime', from: '18:30', to: '19:00' },
+      { field: 'travelers', from: [], to: ['Alex'] },
+      { field: 'details.party', from: '5', to: '6' },
+      { field: 'notes', from: null, to: null },
+    ]);
+    expect(activity[0].changes).toEqual([{ field: 'name', from: 'Summer', to: 'Summer 2027' }]);
+    expect(activity[1].eventId).toBe(ev.id);
+  });
+
+  it('runs the group chat', async () => {
+    const ev = (await asAnon<any>('select get_trip($1)', [slug])).events[0];
+    const first = await asAnon<any>('select post_message($1, $2::jsonb)', [slug, json({ by: 'Mom', body: ' Hi all! ' })]);
+    expect(first).toMatchObject({ author: 'Mom', body: 'Hi all!', eventId: null, deleted: false });
+    const about = await asAnon<any>('select post_message($1, $2::jsonb)', [
+      slug,
+      json({ by: 'Dad', body: 'Is this booked?', eventId: ev.id }),
+    ]);
+    expect(about.eventId).toBe(ev.id);
+
+    let all = await asAnon<any[]>('select get_messages($1)', [slug]);
+    expect(all.map((m) => m.body)).toEqual(['Hi all!', 'Is this booked?']);
+    const newer = await asAnon<any[]>('select get_messages($1, $2::timestamptz)', [slug, first.createdAt]);
+    expect(newer.map((m) => m.body)).toEqual(['Is this booked?']);
+
+    // Only the author can delete, and the text is gone afterwards.
+    await expect(asAnon('select delete_message($1, $2, $3)', [slug, about.id, 'Mom'])).rejects.toThrow(/Message not found/);
+    await asAnon('select delete_message($1, $2, $3)', [slug, about.id, 'dad']);
+    all = await asAnon<any[]>('select get_messages($1)', [slug]);
+    expect(all[1]).toMatchObject({ deleted: true, body: '' });
+
+    await expect(asAnon('select post_message($1, $2::jsonb)', [slug, json({ by: '', body: 'x' })])).rejects.toThrow(
+      /Choose who you are/,
+    );
+    await expect(asAnon('select post_message($1, $2::jsonb)', [slug, json({ by: 'Mom', body: '   ' })])).rejects.toThrow(
+      /check constraint/,
+    );
+    await expect(asAnon('select get_messages($1)', ['nope'])).rejects.toThrow(/Trip not found/);
+  });
+
   it('rejects bad data', async () => {
     await expect(asAnon('select update_trip($1, $2::jsonb)', [slug, json({ endDate: '2027-06-01' })])).rejects.toThrow(
       /trips_date_order/,

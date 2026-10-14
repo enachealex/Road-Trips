@@ -10,8 +10,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { forgetTrip } from '@/lib/my-trips';
 import { TripProvider, useTrip } from '@/lib/trip-context';
 
-// Opening a link straight to an event still puts the itinerary underneath it.
-export const unstable_settings = { initialRouteName: 'index' };
+// Opening a link straight to an event still puts the trip's tabs underneath it.
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 /** Shows loading and error states until the trip is ready, so the screens inside can assume it. */
 function TripGate({ children }: { children: ReactNode }) {
@@ -68,7 +68,7 @@ export default function TripLayout() {
             headerBackButtonDisplayMode: 'minimal',
             contentStyle: { backgroundColor: c.background },
           }}>
-          <Stack.Screen name="index" options={{ title: 'Trip' }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="settings" options={{ title: 'Share & settings' }} />
           <Stack.Screen name="event/new" options={{ title: 'Add to the plan' }} />
           <Stack.Screen name="event/[eventId]/index" options={{ title: 'Details' }} />

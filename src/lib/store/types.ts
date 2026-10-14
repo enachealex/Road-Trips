@@ -1,23 +1,35 @@
-import type { EventInput, Trip, TripBundle, TripEvent, TripInput } from '../types';
+import type { EventInput, Message, Trip, TripBundle, TripEvent, TripInput } from '../types';
+
+export interface NewMessage {
+  body: string;
+  by: string;
+  eventId: string | null;
+}
 
 /**
  * Where trips live. The real app uses Supabase; without Supabase settings the app runs in
- * demo mode with trips kept in this browser only.
+ * demo mode with trips kept in this browser only. Every change carries the name of the
+ * person making it ("by", or updatedBy on events).
  */
 export interface TripStore {
   readonly mode: 'supabase' | 'local';
-  createTrip(input: TripInput): Promise<Trip>;
+  createTrip(input: TripInput, by: string): Promise<Trip>;
   /** Null when the trip does not exist or was deleted. */
   getTrip(slug: string): Promise<TripBundle | null>;
-  updateTrip(slug: string, patch: Partial<TripInput>): Promise<Trip>;
+  updateTrip(slug: string, patch: Partial<TripInput>, by: string): Promise<Trip>;
   deleteTrip(slug: string): Promise<void>;
   saveEvent(slug: string, event: EventInput): Promise<TripEvent>;
   deleteEvent(slug: string, eventId: string, by: string): Promise<void>;
   restoreEvent(slug: string, eventId: string, by: string): Promise<TripEvent>;
-  /** Calls back when someone else changes the trip. Returns an unsubscribe function. */
-  subscribe(slug: string, onChange: () => void): () => void;
-  /** Tells other open copies of the trip that it changed. */
-  notifyChanged(slug: string): void;
+  /** Oldest first. With `after`, only messages newer than that time. */
+  getMessages(slug: string, after?: string | null): Promise<Message[]>;
+  postMessage(slug: string, message: NewMessage): Promise<Message>;
+  /** Only the author can delete a message. */
+  deleteMessage(slug: string, messageId: string, by: string): Promise<Message>;
+  /** Calls back when someone else changes the plan or posts in the chat. Returns an unsubscribe function. */
+  subscribe(slug: string, handlers: { onChange: () => void; onMessage: () => void }): () => void;
+  /** Tells other open copies of the trip that the plan or the chat changed. */
+  notify(slug: string, what: 'plan' | 'messages'): void;
 }
 
 export class StoreError extends Error {
