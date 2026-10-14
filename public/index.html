@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+    <title>%WEB_TITLE%</title>
+    <meta name="description" content="A shared, day-by-day plan for family trips: flights, drives, hotels and everything in between." />
+
+    <!-- Trips are private to whoever has the link: keep them out of search engines, and never
+         send a trip's address to other sites (maps, airlines) when someone follows a link. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+
+    <!-- The preview card when a trip link is pasted into Messages, WhatsApp, email… -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Roadbook" />
+    <meta property="og:title" content="Our trip plan on Roadbook" />
+    <meta property="og:description" content="Flights, drives, hotels and plans for the whole trip, day by day. Tap to open." />
+    <meta property="og:image" content="https://roadtrip.thejumpvault.com/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+
+    <!-- Installable from the browser's "Add to Home Screen". -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Roadbook" />
+    <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1B1D1A" media="(prefers-color-scheme: dark)" />
+
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+        background-color: #f5f3ef;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background-color: #121311;
+        }
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  </body>
+</html>
